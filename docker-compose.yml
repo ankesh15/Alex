@@ -1,0 +1,80 @@
+services:
+  # 0. PostgreSQL Database for Audit Logs & RAG Vector Storage
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: alex_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-alex_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # 1. Redis Cache & Job Queue Broker
+  redis:
+    image: redis:7-alpine
+    container_name: alex_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # 2. FastAPI Web Gateway
+  web:
+    build: .
+    container_name: alex_fastapi
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # 3. Celery Async Task Worker
+  worker:
+    build: .
+    container_name: alex_celery_worker
+    command: celery -A app.core.celery_app.celery_app worker --loglevel=info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # 4. Celery Beat Scheduler
+  beat:
+    build: .
+    container_name: alex_celery_beat
+    command: celery -A app.core.celery_app.celery_app beat --loglevel=info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

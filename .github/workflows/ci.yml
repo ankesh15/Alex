@@ -1,0 +1,116 @@
+name: Enterprise Agentic Platform CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgrespassword
+  POSTGRES_DB: agentic_db_test
+  DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/agentic_db_test
+  REDIS_URL: redis://localhost:6379/0
+  CELERY_BROKER_URL: redis://localhost:6379/0
+  CELERY_RESULT_BACKEND: redis://localhost:6379/1
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+          pip install pytest pytest-cov flake8 httpx
+
+      - name: Generate .env Configuration File
+        run: |
+          cat <<EOF > .env
+          POSTGRES_USER=${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB=${{ env.POSTGRES_DB }}
+          DATABASE_URL=${{ env.DATABASE_URL }}
+          REDIS_URL=${{ env.REDIS_URL }}
+          CELERY_BROKER_URL=${{ env.CELERY_BROKER_URL }}
+          CELERY_RESULT_BACKEND=${{ env.CELERY_RESULT_BACKEND }}
+          GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY || 'test_dummy_key' }}
+          EOF
+
+      - name: Lint Code Quality with Flake8
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 app --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all errors as warnings. Max line length set to 120.
+          flake8 app --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+
+      - name: Run Pytest Test Suite
+        run: |
+          python -m pytest tests/ -v --cov=app --cov-report=term-missing
+
+  docker-build:
+    name: Docker Build Validation
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Generate .env File for Docker Build
+        run: |
+          cat <<EOF > .env
+          POSTGRES_USER=${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB=${{ env.POSTGRES_DB }}
+          DATABASE_URL=${{ env.DATABASE_URL }}
+          REDIS_URL=${{ env.REDIS_URL }}
+          CELERY_BROKER_URL=${{ env.CELERY_BROKER_URL }}
+          CELERY_RESULT_BACKEND=${{ env.CELERY_RESULT_BACKEND }}
+          GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY || 'test_dummy_key' }}
+          EOF
+
+      - name: Validate Docker Compose Configuration
+        run: |
+          docker compose config
+
+      - name: Build Docker Image
+        run: |
+          docker build -t enterprise-agentic-platform:${{ github.sha }} .
