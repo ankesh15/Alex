@@ -9,6 +9,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    chat_id = Column(String(64), nullable=True, index=True)
     filename = Column(String(255), nullable=False)
     stored_filename = Column(String(255), nullable=False)
     file_type = Column(String(10), nullable=False, index=True)
@@ -19,8 +20,12 @@ class Document(Base):
     # JSON-encoded array of extracted pages: [{"text": "...", "page_number": int|None}]
     extracted_text = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
 
     # Cascading relationship to DocumentChunk
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")

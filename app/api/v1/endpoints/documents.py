@@ -1,8 +1,8 @@
 import os
 import uuid
 import json
-from typing import Generator
-from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
+from typing import Generator, Optional
+from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.db import SessionLocal
@@ -27,6 +27,7 @@ def get_db() -> Generator[Session, None, None]:
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: UploadFile = File(...),
+    chat_id: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     if not file or not file.filename:
@@ -57,7 +58,7 @@ async def upload_document(
     if file_size > max_bytes:
         size_mb = file_size / (1024 * 1024)
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"File size ({size_mb:.2f} MB) exceeds maximum limit of {settings.MAX_UPLOAD_SIZE_MB} MB."
         )
 
@@ -78,6 +79,7 @@ async def upload_document(
 
     doc_record = Document(
         id=doc_id,
+        chat_id=chat_id,
         filename=original_filename,
         stored_filename=stored_filename,
         file_type=ext,
@@ -136,8 +138,14 @@ async def upload_document(
 
 
 @router.get("", response_model=DocumentListResponse)
-def list_documents(db: Session = Depends(get_db)):
-    documents = db.query(Document).order_by(Document.created_at.desc()).all()
+def list_documents(
+    chat_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    query = db.query(Document)
+    if chat_id:
+        query = query.filter(Document.chat_id == chat_id)
+    documents = query.order_by(Document.created_at.desc()).all()
     return DocumentListResponse(
         documents=documents,
         total=len(documents)
@@ -172,6 +180,30 @@ def get_document(document_id: str, db: Session = Depends(get_db)):
         updated_at=doc.updated_at,
         page_count=page_count
     )
+
+
+@router.delete("/chat/{chat_id}")
+def delete_chat_documents(chat_id: str, db: Session = Depends(get_db)):
+    """
+    Deletes all temporary documents, physical files, chunks, and embeddings
+    associated with a specific chat session.
+    """
+    docs = db.query(Document).filter(Document.chat_id == chat_id).all()
+    deleted_count = 0
+    for doc in docs:
+        file_path = os.path.join(settings.STORAGE_DIR, doc.stored_filename)
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+        db.delete(doc)
+        deleted_count += 1
+    db.commit()
+    return {
+        "message": f"Successfully deleted {deleted_count} documents for chat '{chat_id}'.",
+        "deleted_count": deleted_count
+    }
 
 
 @router.delete("/{document_id}")

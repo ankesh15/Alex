@@ -8,9 +8,9 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
 
-    # Google Gemini API Key
+    # Google Gemini API Key & Model
     GOOGLE_API_KEY: str = Field(default_factory=lambda: os.getenv("GOOGLE_API_KEY", ""))
-    GEMINI_MODEL: str = Field(default="models/gemini-3.6-flash")
+    GEMINI_MODEL: str = Field(default="gemini-3.6-flash")
 
     # Database Config
     DATABASE_URL: str = Field(default="postgresql://postgres:postgrespassword@postgres:5432/alex_db")
@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = Field(default=1000)
     CHUNK_OVERLAP: int = Field(default=150)
     RAG_TOP_K: int = Field(default=5)
+    # Cosine distance threshold (0.0 is identical; <= threshold is considered relevant)
+    RAG_SIMILARITY_THRESHOLD: float = Field(default=0.48)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=True, extra="ignore")
 

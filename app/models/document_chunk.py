@@ -21,6 +21,6 @@ class DocumentChunk(Base):
     content = Column(Text, nullable=False)
     page_number = Column(Integer, nullable=True)
     embedding = Column(Vector(settings.EMBEDDING_DIMENSION), nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
     document = relationship("Document", back_populates="chunks")

@@ -1,6 +1,5 @@
-from sqlalchemy import create_engine, Column, String, Text, DateTime, Integer, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
-import datetime
 from app.config import settings
 
 DATABASE_URL = settings.DATABASE_URL
@@ -9,23 +8,8 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-
-class AgentAuditLog(Base):
-    __tablename__ = "agent_audit_logs"
-
-    task_id = Column(String, primary_key=True, index=True)
-    module_name = Column(String, index=True)
-    status = Column(String, default="PENDING")
-    input_data = Column(Text)
-    output_result = Column(Text, nullable=True)
-
-    # Token Metrics
-    prompt_tokens = Column(Integer, default=0)
-    completion_tokens = Column(Integer, default=0)
-    total_tokens = Column(Integer, default=0)
-
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+# Re-export AgentAuditLog for backward compatibility
+from app.models.audit_log import AgentAuditLog  # noqa: F401, E402
 
 
 def init_db():
