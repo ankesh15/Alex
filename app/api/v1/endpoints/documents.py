@@ -24,6 +24,17 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
+def _safe_file_path(stored_filename: str) -> Optional[str]:
+    """Ensures file paths cannot escape the designated storage directory."""
+    if not stored_filename:
+        return None
+    storage_abs = os.path.abspath(settings.STORAGE_DIR)
+    target_path = os.path.abspath(os.path.join(storage_abs, stored_filename))
+    if target_path.startswith(storage_abs) and target_path != storage_abs:
+        return target_path
+    return None
+
+
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: UploadFile = File(...),
@@ -66,15 +77,22 @@ async def upload_document(
     doc_id = str(uuid.uuid4())
     stored_filename = f"{doc_id}.{ext}"
     os.makedirs(settings.STORAGE_DIR, exist_ok=True)
-    file_path = os.path.join(settings.STORAGE_DIR, stored_filename)
+    file_path = _safe_file_path(stored_filename)
+    if not file_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path configuration."
+        )
 
     try:
         with open(file_path, "wb") as f:
             f.write(contents)
     except Exception as e:
+        import logging
+        logging.error(f"Failed to save uploaded file: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save uploaded file to storage: {str(e)}"
+            detail="Failed to save uploaded file to storage."
         )
 
     doc_record = Document(
@@ -191,8 +209,8 @@ def delete_chat_documents(chat_id: str, db: Session = Depends(get_db)):
     docs = db.query(Document).filter(Document.chat_id == chat_id).all()
     deleted_count = 0
     for doc in docs:
-        file_path = os.path.join(settings.STORAGE_DIR, doc.stored_filename)
-        if os.path.exists(file_path):
+        file_path = _safe_file_path(doc.stored_filename)
+        if file_path and os.path.exists(file_path):
             try:
                 os.remove(file_path)
             except Exception:
@@ -216,8 +234,8 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
         )
 
     # 1. Remove Physical File
-    file_path = os.path.join(settings.STORAGE_DIR, doc.stored_filename)
-    if os.path.exists(file_path):
+    file_path = _safe_file_path(doc.stored_filename)
+    if file_path and os.path.exists(file_path):
         try:
             os.remove(file_path)
         except Exception:

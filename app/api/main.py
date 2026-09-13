@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +9,7 @@ from app.core.db import init_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    os.makedirs(settings.STORAGE_DIR, exist_ok=True)
     init_db()
     yield
 
@@ -21,10 +23,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Enable CORS for frontend clients
+# Enable CORS for frontend clients (configurable via ALLOWED_ORIGINS / FRONTEND_URL)
+cors_origins = settings.cors_origins
+allow_origins = ["*"] if "*" in cors_origins else cors_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,3 +46,9 @@ def health_check():
         "platform": settings.PROJECT_NAME,
         "version": settings.VERSION
     }
+
+
+@app.get("/health", tags=["Health Check"])
+def health():
+    return {"status": "ok"}
+

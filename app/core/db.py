@@ -3,8 +3,10 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import settings
 
 DATABASE_URL = settings.DATABASE_URL
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -33,3 +35,14 @@ def init_db():
     except Exception as e:
         import logging
         logging.warning(f"Could not initialize DB tables on startup: {e}")
+
+    # 3. Lightweight migration safety for documents.chat_id
+    if "postgresql" in DATABASE_URL:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS chat_id VARCHAR(64);"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_documents_chat_id ON documents (chat_id);"))
+                conn.commit()
+        except Exception as e:
+            import logging
+            logging.warning(f"Could not verify or apply chat_id column migration: {e}")
