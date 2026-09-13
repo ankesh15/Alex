@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, FileText, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { uploadDocument } from '../services/api';
 
-export default function UploadDocument({ onUploadSuccess }) {
+export default function UploadDocument({ onUploadSuccess, chatId }) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null); // 'success' | 'error' | null
   const [errorMessage, setErrorMessage] = useState('');
@@ -32,7 +32,7 @@ export default function UploadDocument({ onUploadSuccess }) {
     setErrorMessage('');
 
     try {
-      await uploadDocument(file);
+      await uploadDocument(file, chatId);
       setUploadStatus('success');
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (onUploadSuccess) onUploadSuccess();
