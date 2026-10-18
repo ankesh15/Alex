@@ -1,8 +1,11 @@
 import os
+import pytest
+from sqlalchemy import create_engine
 from fastapi.testclient import TestClient
 from app.config import Settings
 from app.api.main import app
 from app.api.v1.endpoints.documents import _safe_file_path
+from app.core.db import normalize_database_url
 
 
 client = TestClient(app)
@@ -30,10 +33,26 @@ def test_cors_origins_deduplication():
     assert origins.count("https://app.vercel.app") == 1
 
 
-def test_database_url_normalization():
-    railway_url = "postgres://postgres:securepass@roundhouse.proxy.rlwy.net:12345/railway"
-    normalized = railway_url.replace("postgres://", "postgresql://", 1)
-    assert normalized.startswith("postgresql://")
+@pytest.mark.parametrize("scheme", ["postgres", "postgresql", "postgresql+psycopg2"])
+def test_database_url_normalization(scheme):
+    # Preserve encoded credentials, database name and query options exactly.
+    suffix = "user:p%40ss%2Fword@localhost:5432/database?sslmode=require&application_name=alex"
+    normalized = normalize_database_url(f"{scheme}://{suffix}")
+    assert normalized == f"postgresql+psycopg2://{suffix}"
+    engine = create_engine(normalized)  # Loads the DBAPI without making a connection.
+    try:
+        assert engine.dialect.driver == "psycopg2"
+        assert engine.dialect.dbapi.__name__ == "psycopg2"
+        assert engine.url.password == "p@ss/word"
+        assert engine.url.query["sslmode"] == "require"
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("url", ["sqlite:///:memory:", "postgresql+psycopg://user@localhost/db",
+                                 "postgresql+asyncpg://user@localhost/db"])
+def test_explicit_or_non_postgresql_driver_is_preserved(url):
+    assert normalize_database_url(url) == url
 
 
 def test_health_check_endpoints():

@@ -10,7 +10,7 @@ env:
   POSTGRES_USER: postgres
   POSTGRES_PASSWORD: postgrespassword
   POSTGRES_DB: agentic_db_test
-  DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/agentic_db_test
+  DATABASE_URL: postgresql+psycopg2://postgres:postgrespassword@localhost:5432/agentic_db_test
   REDIS_URL: redis://localhost:6379/0
   CELERY_BROKER_URL: redis://localhost:6379/0
   CELERY_RESULT_BACKEND: redis://localhost:6379/1

@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
+from app.core.db import normalize_database_url
 from app.core.migrate import migrate_memory, migrate_history as migrate_auth
 from app.core.auth import throttle_auth
 from app.models.user import User, AuthRateLimit
@@ -28,11 +29,11 @@ def legacy_engine():
     if parsed.get_backend_name() != "postgresql" or not (parsed.database or "").startswith("alex_memory_test"):
         pytest.fail("Use only a disposable alex_memory_test* PostgreSQL database")
     schema = "auth_test_" + uuid.uuid4().hex
-    bootstrap = create_engine(url)
+    bootstrap = create_engine(normalize_database_url(url))
     with bootstrap.begin() as connection:
         connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
     bootstrap.dispose()
-    engine = create_engine(url, connect_args={"options": f"-csearch_path={schema},public"})
+    engine = create_engine(normalize_database_url(url), connect_args={"options": f"-csearch_path={schema},public"})
     migrate_memory(engine)
     with engine.begin() as conn:
         conn.exec_driver_sql("""CREATE TABLE documents (

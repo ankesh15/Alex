@@ -2,9 +2,17 @@ from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import settings
 
-DATABASE_URL = settings.DATABASE_URL
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+def normalize_database_url(database_url: str) -> str:
+    """Use the installed psycopg2 driver regardless of SQLAlchemy's default."""
+    for prefix in ("postgres://", "postgresql://"):
+        if database_url.startswith(prefix):
+            return "postgresql+psycopg2://" + database_url[len(prefix):]
+    # Respect explicitly configured drivers and non-PostgreSQL test databases.
+    return database_url
+
+
+DATABASE_URL = normalize_database_url(settings.DATABASE_URL)
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

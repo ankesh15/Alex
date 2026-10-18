@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
+from app.core.db import normalize_database_url
 from app.core.migrate import migrate_history as migrate_memory
 from app.models.conversation import Conversation, ConversationTurn
 from app.models.user import User
@@ -25,7 +26,7 @@ def pg_engine():
     parsed = make_url(url)
     if parsed.get_backend_name() != "postgresql" or not (parsed.database or "").startswith("alex_memory_test"):
         pytest.fail("Use a disposable PostgreSQL database named alex_memory_test* for memory integration tests")
-    engine = create_engine(url, pool_pre_ping=True)
+    engine = create_engine(normalize_database_url(url), pool_pre_ping=True)
     migrate_memory(engine)
     with sessionmaker(bind=engine)() as session:
         if session.get(User, "test-user") is None:

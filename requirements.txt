@@ -16,6 +16,7 @@ redis>=5.0.3
 
 # Database & ORM
 sqlalchemy>=2.0.0
+# app.core.db explicitly selects this driver for plain PostgreSQL URLs.
 psycopg2-binary>=2.9.9
 pgvector>=0.2.0
 

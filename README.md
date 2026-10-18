@@ -1,479 +1,422 @@
 # ALEX — AI Knowledge & Research Assistant
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-009688.svg?style=flat&logo=FastAPI&logoColor=white)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18.3.1-61DAFB.svg?style=flat&logo=react&logoColor=black)](https://reactjs.org/)
-[![Vite](https://img.shields.io/badge/Vite-5.4.11-646CFF.svg?style=flat&logo=vite&logoColor=white)](https://vitejs.dev/)
-[![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-3.4.17-38B2AC.svg?style=flat&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16_pgvector-336791.svg?style=flat&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
-[![Google Gemini](https://img.shields.io/badge/Google_Gemini-2.5_Flash-4285F4.svg?style=flat&logo=google&logoColor=white)](https://aistudio.google.com/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-Workflow-1C3C3C.svg?style=flat)](https://www.langchain.com)
-[![FastEmbed](https://img.shields.io/badge/FastEmbed-ONNX_CPU-FF6F00.svg?style=flat)](https://github.com/qdrant/fastembed)
-[![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
+**Research your documents. Continue the conversation. Return to your work.**
 
-ALEX pairs a modern, ChatGPT-style conversational interface with a LangGraph-orchestrated Retrieval-Augmented Generation (RAG) pipeline to deliver grounded answers, document citations, and chat-scoped document workflows.
+ALEX combines document-grounded question answering with persistent conversations in a
+React interface. Upload research material, ask follow-up questions, inspect retrieved
+sources, and reopen earlier chats with their existing context. A FastAPI backend uses
+LangGraph, Google Gemini, and PostgreSQL with pgvector to coordinate retrieval,
+generation, authentication, and history.
 
----
+[![CI](https://github.com/ankesh15/Alex/actions/workflows/ci.yml/badge.svg)](https://github.com/ankesh15/Alex/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)
 
-## 🚀 Live Demo
+[Getting started](#getting-started) · [Architecture](#architecture) ·
+[API reference](#api-reference) · [Testing](#testing) · [Deployment](#deployment) ·
+[Roadmap](#roadmap)
 
-- **Live Demo (Frontend)**: [Live Demo](YOUR_VERCEL_URL)
-- **Backend API**: [Backend API](YOUR_RAILWAY_URL)
-- **API Documentation**: [Interactive Swagger Docs](YOUR_RAILWAY_URL/docs)
+## Features
 
----
+| Capability | What you can do |
+| --- | --- |
+| Document research | Ask questions across a conversation's documents or focus on one file. |
+| General chat | Talk to Gemini without document retrieval. |
+| Conversation memory | Ask follow-up questions using bounded, scope-specific dialogue context. |
+| Persistent history | Create, rename, reopen, and delete conversations from a responsive sidebar. |
+| Source references | Inspect retrieved filenames, page numbers when available, and similarity scores. |
+| Document ingestion | Upload PDF, DOCX, and TXT files, with a configurable size limit. |
+| Authentication | Sign up, sign in, and sign out using revocable server-side cookie sessions. |
+| User isolation | Access only your own conversations, exchanges, and documents. |
 
-## ✨ Features
+Conversation lists and message history are paginated. Switching chats guards against
+late responses appearing in the wrong conversation. Starting a new chat retains
+previous messages and attached documents.
 
-- **Authentication & Authorization**: Secure signup/login/logout, PostgreSQL-backed revocable sessions, CSRF protections, and user ownership on documents, conversation memory, history reads, and retrieval. See [authentication setup](docs/feature4-authentication.md).
-- **Dual Chat Experience**: Toggle effortlessly between general conversational AI mode and grounded document research mode.
-- **Persistent Conversation Memory**: Supply `chat_id` in either chat endpoint to remember recent turns in PostgreSQL, separated by General/All Documents/specific-document scope. See [memory setup and limitations](docs/feature1-memory.md).
-- **Document-Grounded RAG**: Graph-orchestrated semantic retrieval and grounding prompts use source documents to support answers. Faithfulness still requires evaluation.
-- **Multi-Format Ingestion**: Ingest, validate, and parse PDF, DOCX, and TXT files with automatic page metadata tracking.
-- **Structured Source Citations**: Inspect exact source filenames, page numbers, and cosine similarity relevance scores for every generated claim.
-- **Chat-Scoped Document Isolation**: Uploaded files and vector records are bound to unique session identifiers (`chat_id`), preventing cross-session context leakage.
-- **Persistent Chat History**: Create, rename, reopen and explicitly delete owned conversations from a responsive sidebar. Conversation lists and saved exchanges are paginated. New Chat retains previous messages and documents; deletion removes them with retryable file cleanup. See [history implementation and migration](docs/feature5-history.md).
-- **ChatGPT-Style Web Interface**: Polished, responsive user experience featuring an auto-expanding composer, suggestion prompts, in-composer file attachments, and token usage metrics.
+Streaming responses, hybrid search, and an automated RAG evaluation framework are
+planned; they are not part of the current implementation.
 
----
+## Architecture
 
-## 🧠 How ALEX Works
-
-### Document RAG Workflow
-
-```
-User Question + Document
-           │
-           ▼
-  React / Vite Frontend
-           │
-           ▼
-      FastAPI API
-           │
-    ┌──────┴──────────────────────────┐
-    ▼                                 ▼
-Document Ingestion             Question Embedding
- (PDF / DOCX / TXT)           (FastEmbed BAAI Model)
-    │                                 │
- Text Extraction                      ▼
- & Chunking (LangChain)        Vector Similarity Search
-    │                          (pgvector Cosine Distance)
-    ▼                                 │
-FastEmbed Vectorization               │
-    │                                 ▼
-    └──────────► PostgreSQL ◄─────────┘
-                   (pgvector)
-                       │
-                       ▼
-            LangGraph RAG Workflow
-            ├─ [No Context] ──► Deterministic Fallback Notice
-            └─ [Context] ────► Gemini 2.5 Flash Synthesis
-                                      │
-                                      ▼
-                        Grounded Answer + Citations
+```mermaid
+flowchart TD
+    Browser[React · Vite · Tailwind CSS] --> API[FastAPI · Authentication · Ownership checks]
+    API --> History[Conversation and memory services]
+    History --> DB[(PostgreSQL + pgvector)]
+    API --> Upload[Document extraction and chunking]
+    Upload --> Embed[FastEmbed · Local embeddings]
+    Embed --> DB
+    Upload --> Files[Persistent document storage]
+    API --> Graph[LangGraph RAG workflow]
+    Graph --> DB
+    Graph --> Gemini[Google Gemini]
+    API --> General[General chat with scoped memory]
+    General --> Gemini
 ```
 
-### General Chat Workflow
+### Document question answering
 
-When no document context is selected (General Chat mode), ALEX bypasses vector search and document retrieval entirely:
+1. **Ingest:** Validate the upload, extract text, and split it into overlapping chunks.
+   FastEmbed generates embeddings locally; PostgreSQL stores document metadata,
+   chunks, and vectors. Original files stay in configured document storage.
+2. **Contextualize:** Load recent successful exchanges from the current conversation
+   and retrieval scope. LangGraph uses that context to resolve follow-up references.
+3. **Retrieve:** Embed the question and search owner-authorized documents with
+   pgvector cosine distance. Apply conversation/document filters and a relevance threshold.
+4. **Generate:** Give Gemini the retrieved context. If no relevant context is found,
+   return an insufficient-context response instead of generating a document answer.
+5. **Persist:** Store a completed exchange atomically with its scope, citations, and
+   token usage. Revision checks reject competing stale writes with HTTP 409.
 
+Citations identify retrieved sources; they do not independently verify every generated
+claim. Conversation history helps interpret questions and is not treated as document evidence.
+
+### Memory and history
+
+The existing `conversations` and `conversation_turns` tables are the single source of
+truth for both memory and displayed history. General chat, all-document research, and
+specific-document research have separate memory scopes. Prompt history is bounded by
+turn count and character budget; full completed exchanges remain stored until deletion.
+
+The frontend restores the last selected conversation by a per-user ID preference.
+Messages are fetched from the authenticated API rather than stored in browser storage.
+Chat requests without a `chat_id` remain stateless for conversation memory and still
+require authentication.
+
+### Technology stack
+
+| Layer | Technologies |
+| --- | --- |
+| Frontend | React 18, Vite 5, Tailwind CSS 3, Lucide |
+| API and validation | Python 3.11+, FastAPI, Pydantic, Uvicorn |
+| AI orchestration | Google Gemini, LangGraph, LangChain |
+| Embeddings | FastEmbed, `BAAI/bge-small-en-v1.5`, 384 dimensions by default |
+| Data and storage | PostgreSQL 16, pgvector, SQLAlchemy, psycopg2, filesystem storage |
+| Document processing | PyMuPDF, python-docx, LangChain text splitters |
+| Infrastructure | Docker, Docker Compose, GitHub Actions, Railway and Vercel configuration |
+
+Redis and Celery are configured for background processing infrastructure. The current
+upload endpoint performs extraction and embedding during the request.
+
+## Getting started
+
+### Prerequisites
+
+- Python 3.11 or newer.
+- Node.js 18 or newer and npm.
+- Docker with Docker Compose v2, or an existing PostgreSQL instance with pgvector.
+- A Google Gemini API key for live answers.
+
+The first embedding request may download the FastEmbed model. Subsequent requests
+reuse its local cache.
+
+### 1. Clone and install the backend
+
+```bash
+git clone https://github.com/ankesh15/Alex.git
+cd Alex
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env
 ```
-User Question ──► React Frontend ──► FastAPI (/api/v1/chat/general) ──► Google Gemini ──► Direct Answer
+
+On Windows, activate the virtual environment with `venv\Scripts\Activate.ps1` in PowerShell.
+
+Edit `.env` for your environment. For the local Docker database and an HTTP frontend:
+
+```dotenv
+GOOGLE_API_KEY=your_google_api_key
+DATABASE_URL=postgresql+psycopg2://postgres:postgrespassword@localhost:5432/alex_db
+APP_ENV=development
+SESSION_COOKIE_SECURE=false
+SESSION_COOKIE_SAMESITE=lax
+ALLOWED_ORIGINS=http://localhost:5173
+FRONTEND_URL=http://localhost:5173
+STORAGE_DIR=storage/documents
 ```
 
-General chat bypasses document retrieval. With `chat_id`, it loads bounded conversation history from PostgreSQL; requests without `chat_id` remain stateless for memory while still validating their authenticated session in PostgreSQL.
+The database credentials above match the Compose development defaults. Use your own
+credentials for a shared or production environment. Keep `.env` out of version control.
 
-### Conversation Memory (first upgrade increment)
+### 2. Start PostgreSQL and apply migrations
 
-Document follow-ups now run through `contextualize_question → retrieve_context → generation → citations` in the existing LangGraph. Recent successful turns resolve references; answers and citations still require fresh retrieved document context. Completed exchanges are stored atomically with citations, token usage, and scope. Concurrent stale writes return HTTP 409; unavailable storage returns HTTP 503.
+```bash
+docker compose up -d postgres
+docker compose ps
+```
 
-The [repository review and prioritized plan](docs/upgrade-plan.md) covers the remaining increments. **Authentication and authorization are now implemented in Feature 4.** All chat/document endpoints require an active cookie session; identifiers never establish ownership. Existing unowned data stays quarantined. Feature 5 adds an authenticated history sidebar, reopening, pagination and explicit conversation deletion. Reload restores the last selected owned conversation. New Chat preserves earlier messages and attached documents. Streaming and hybrid search remain deferred.
+Wait for PostgreSQL to report healthy, then run:
 
----
+```bash
+python -m app.core.migrate
+uvicorn app.api.main:app --host 127.0.0.1 --port 8000 --reload
+```
 
-## 🏗️ Architecture
+The migration command applies the memory, authentication, and history migrations.
+Run it before starting an upgraded installation. API startup rejects a partially
+migrated ownership or history schema.
 
-| Component | Technology | Core Responsibility |
-|---|---|---|
-| **Frontend** | React 18, Vite 5, Tailwind CSS | Single-page application, chat lifecycle management, attachment uploading, and citation rendering. |
-| **API Gateway** | FastAPI, Pydantic v2, Uvicorn | RESTful endpoints, request/response validation, CORS governance, and unified error handling. |
-| **Document Processing** | PyMuPDF, python-docx, LangChain | File validation, text extraction, page number indexing, and recursive character chunking. |
-| **Embedding Service** | FastEmbed (`BAAI/bge-small-en-v1.5`) | In-process, CPU-optimized 384-dimensional ONNX vector generation with zero PyTorch/CUDA overhead. |
-| **Vector & Relational Store** | PostgreSQL 16 + `pgvector` | Relational document tracking with cosine distance similarity search; vector index migrations remain planned. |
-| **RAG Orchestration** | LangGraph, StateGraph | Deterministic DAG workflow managing context retrieval, threshold validation, answer synthesis, and citation assembly. |
-| **LLM Inference** | Google Gemini (`gemini-2.5-flash`) | Context-grounded synthesis at zero temperature; this does not guarantee deterministic or faithful generation. |
+### 3. Start the frontend
 
----
+In a separate terminal, from the repository root:
 
-## 🛠️ Tech Stack
+```bash
+cd frontend
+npm ci
+cp .env.example .env
+npm run dev
+```
 
-### Frontend
-- **Framework**: React 18
-- **Bundler & Tooling**: Vite 5
-- **Styling**: Tailwind CSS 3
-- **Icons**: Lucide React
+The frontend example sets `VITE_API_URL=http://localhost:8000`. Use `localhost`
+consistently in the frontend URL, API URL, and allowed origins for local cookie authentication.
+
+| Service | Local address |
+| --- | --- |
+| Application | [localhost:5173](http://localhost:5173) |
+| API documentation | [localhost:8000/docs](http://localhost:8000/docs) |
+| Alternative API documentation | [localhost:8000/redoc](http://localhost:8000/redoc) |
+| Liveness endpoint | [localhost:8000/health](http://localhost:8000/health) |
+
+Create an account, start a conversation, and choose **General**, **All Documents**, or
+a specific attached document in the composer. Use **Chat history** to return to earlier work.
+
+## Configuration
+
+The complete backend and frontend templates are in [.env.example](.env.example) and
+[frontend/.env.example](frontend/.env.example). Frontend `VITE_` values are public
+build-time settings; keep Gemini and database credentials on the backend.
+
+| Setting | Default or purpose |
+| --- | --- |
+| `GOOGLE_API_KEY` | Required for live Gemini generation. |
+| `GEMINI_MODEL` | `gemini-2.5-flash` |
+| `DATABASE_URL` | PostgreSQL connection string; use your deployment's credentials. |
+| `STORAGE_DIR` | `storage/documents`; use persistent storage in production. |
+| `MAX_UPLOAD_SIZE_MB` | `20`; the current frontend also enforces a 20 MB limit. |
+| `ALLOWED_ORIGINS` | Explicit, comma-separated frontend origins. |
+| `FRONTEND_URL` | Optional frontend origin added to the CORS allowlist. |
+| `VITE_API_URL` | Frontend API origin, such as `http://localhost:8000`, without `/api/v1`. |
+
+Plain `postgres://` and `postgresql://` URLs explicitly select the installed
+`psycopg2-binary` driver. URLs that name another driver are preserved and require
+that driver's package. CI also uses `postgresql+psycopg2://` explicitly.
+
+### Retrieval and memory
+
+| Setting | Default |
+| --- | --- |
+| `EMBEDDING_MODEL` / `EMBEDDING_DIMENSION` | `BAAI/bge-small-en-v1.5` / `384` |
+| `CHUNK_SIZE` / `CHUNK_OVERLAP` | `1000` / `150` characters |
+| `RAG_TOP_K` | `5` |
+| `RAG_SIMILARITY_THRESHOLD` | `0.48` maximum cosine distance; lower is closer. |
+| `MEMORY_MAX_TURNS` | `8` successful exchanges per conversation and scope. |
+| `MEMORY_MAX_CHARS` | `12000` characters; not an exact token limit. |
+
+### Sessions and authentication
+
+| Setting | Default |
+| --- | --- |
+| `APP_ENV` | `development`; use `production` for deployment. |
+| `SESSION_COOKIE_SECURE` | `true`; the local HTTP template explicitly sets `false`. |
+| `SESSION_COOKIE_SAMESITE` | `lax`; `none` requires Secure cookies. |
+| `SESSION_MAX_AGE_SECONDS` / `SESSION_IDLE_SECONDS` | `604800` / `43200` |
+| `AUTH_RATE_MAX_ATTEMPTS` / `AUTH_RATE_WINDOW_SECONDS` | `20` attempts / `300` seconds. |
+
+## API reference
+
+The API prefix is `/api/v1`. Interactive request and response schemas are available
+at `/docs` when the backend is running.
+
+Protected routes require the session cookie. Protected mutations also require the
+session's `X-CSRF-Token`; `/auth/me` restores the token for an active session.
+Login and signup establish sessions and enforce origin and rate-limit checks.
+
+| Area | Method and route | Purpose |
+| --- | --- | --- |
+| Authentication | `POST /auth/signup` | Create an account and session. |
+| Authentication | `POST /auth/login` | Start a new session. |
+| Authentication | `GET /auth/me` | Retrieve the current user and CSRF token. |
+| Authentication | `POST /auth/logout` | Revoke the current session. |
+| Chat | `POST /chat` | Query authorized documents. |
+| Chat | `POST /chat/general` | Chat without document retrieval. |
+| History | `POST /conversations` | Create a conversation with an optional title. |
+| History | `GET /conversations` | List owned conversations with cursor pagination. |
+| History | `GET /conversations/{id}` | Retrieve metadata and the last saved scope. |
+| History | `PATCH /conversations/{id}` | Rename a conversation. |
+| History | `DELETE /conversations/{id}` | Delete a conversation and its attached content. |
+| History | `GET /conversations/{id}/messages` | Retrieve paginated user/assistant exchanges. |
+| History | `GET /chat/{chat_id}/history` | Retrieve the compatible turn-based history view. |
+| Documents | `POST /documents/upload` | Upload a file with an optional `chat_id`. |
+| Documents | `GET /documents` | List owned documents, optionally filtered by `chat_id`. |
+| Documents | `GET /documents/{document_id}` | Retrieve document details. |
+| Documents | `DELETE /documents/{document_id}` | Delete a document and its chunks. |
+| Documents | `DELETE /documents/chat/{chat_id}` | Delete a conversation's attached documents only. |
+
+Conversation lists accept `limit` and `cursor`, returning `next_cursor`. Message
+history accepts `limit`, `before_turn`, and `through_turn`. Its limit counts complete
+exchanges, so 25 exchanges can return 50 individual messages. Use `next_before_turn`
+for the next page and preserve the initial `through_turn` upper bound. Both pagination
+limits range from 1 to 100.
+
+A document-chat request can include:
+
+```json
+{
+  "question": "What evidence supports the conclusion?",
+  "chat_id": "your_conversation_id",
+  "document_id": null,
+  "top_k": 5
+}
+```
+
+Conversation and document IDs select resources; the server independently verifies
+ownership. Missing, foreign, quarantined, or deleted conversation IDs return 404 for
+management/history operations. The existing chat endpoints can create a previously
+unknown ID for the authenticated owner; they cannot claim an existing foreign,
+unowned, or deleted ID.
+
+## Security and data lifecycle
+
+- Passwords use salted scrypt hashing. Opaque session tokens are stored as hashes in
+  PostgreSQL, with absolute/idle expiration and logout revocation.
+- Cookies are HttpOnly. Secure mode uses the `__Host-alex_session` cookie name.
+  Mutation requests validate CSRF and origins; credentialed CORS uses explicit origins.
+- Queries enforce authenticated ownership. PostgreSQL composite foreign keys also
+  constrain conversation/message and conversation/document owner relationships.
+- Legacy records without owners remain quarantined and cannot be claimed by presenting an ID.
+- Uploads check extension, size, and nonempty content. UUID storage names and resolved
+  path checks protect filesystem boundaries. MIME/signature validation remains planned.
+
+**New Chat preserves earlier work.** Confirmed conversation deletion removes its
+exchanges, document text, vector chunks, and attached files. File cleanup failures
+leave inaccessible cleanup records and support retry through the same owner's DELETE
+request. A minimal conversation tombstone prevents late requests from recreating it.
+Unattached documents and other conversations are unaffected.
+
+Linked RAG audit question/answer text is scrubbed during conversation deletion;
+operational metrics remain. Older audit rows without a reliable conversation link
+and backup copies require a separate operational retention policy. See the
+[history design and deletion semantics](docs/feature5-history.md) for details.
+
+## Testing
+
+Run backend checks from the repository root with the virtual environment active:
+
+```bash
+python -m pip install pytest pytest-cov flake8 httpx
+python -m pytest tests/ -v --cov=app --cov-report=term-missing
+python -m flake8 app --jobs=1 --count --select=E9,F63,F7,F82 --show-source --statistics
+```
+
+Most tests use SQLite with mocked Gemini calls. Embedding tests require a cached or
+downloadable FastEmbed model. PostgreSQL-specific tests skip unless
+`MEMORY_TEST_DATABASE_URL` points to a **disposable database named `alex_memory_test*`**.
+Never point it at an application database.
+
+After setting that variable securely in your shell:
+
+```bash
+python -m pytest tests/test_memory_postgres.py tests/test_auth_postgres.py tests/test_history_postgres.py -v
+```
+
+Frontend checks, from `frontend/`:
+
+```bash
+npm test
+npm run build
+```
+
+Coverage includes authentication, ownership, memory isolation, pagination, deletion,
+reopening, and stale asynchronous responses. There is currently no frontend lint
+script. GitHub Actions runs backend lint/tests and Docker build validation; frontend
+and optional PostgreSQL integration checks are not yet included in that workflow.
+
+## Deployment
 
 ### Backend
-- **Language**: Python 3.11+
-- **Web Framework**: FastAPI
-- **Data Validation**: Pydantic v2 & Pydantic Settings
-- **ORM & Database Client**: SQLAlchemy 2.0, Psycopg2-binary
 
-### AI & Retrieval
-- **LLM**: Google Gemini (`gemini-2.5-flash`) via `langchain-google-genai`
-- **Workflow Orchestration**: LangGraph (`StateGraph`)
-- **Text Splitter**: LangChain Text Splitters (`RecursiveCharacterTextSplitter`)
-- **Embedding Model**: FastEmbed `BAAI/bge-small-en-v1.5` (384 dimensions, ONNX Runtime)
+The [Dockerfile](Dockerfile) builds the FastAPI service, and [railway.json](railway.json)
+configures Railway startup and liveness checks. Provision PostgreSQL with pgvector
+and a persistent document-storage volume.
 
-### Database & Storage
-- **Relational & Vector Database**: PostgreSQL 16 with `pgvector`
-- **Session File Storage**: Local filesystem or Railway Persistent Volume mount (`/app/storage/documents`)
+Before rolling out an upgraded backend:
 
-### Infrastructure & Deployment
-- **Containerization**: Docker (single-stage Python 3.11 slim)
-- **Backend Hosting**: Railway (Docker runtime with dynamic `$PORT` assignment)
-- **Frontend Hosting**: Vercel (Edge CDN with SPA route rewrites)
-- **CI/CD**: GitHub Actions (Linting, Pytest, and Docker build validation)
+1. Back up the database and document storage using your operational procedures.
+2. Configure the intended database credentials and persistent `STORAGE_DIR`.
+3. Run `python -m app.core.migrate` in the release environment before starting the new API.
+4. Set `APP_ENV=production`, `SESSION_COOKIE_SECURE=true`, trusted frontend origins,
+   and HTTPS. The container listens on the supplied `PORT` (default `8000`).
 
----
+Migrations 001–003 are additive and repeatable. They preserve existing records and
+leave unowned legacy data quarantined. No destructive rollback migration is provided.
 
-## 📄 Document Processing & RAG
+Docker Compose is a development stack with bind mounts and a reload-enabled web
+service. If running its API container, configure `DATABASE_URL` to use the `postgres`
+service hostname rather than `localhost`; Redis/Celery URLs likewise use `redis`.
+Run the migration command inside the configured web image before starting the API.
 
-1. **Supported Formats**: Ingests `.pdf`, `.docx`, and `.txt` files.
-2. **Validation & Security**:
-   - Rejects unapproved extensions.
-   - Enforces an upload cap (default: 20 MB) and verifies non-empty payloads.
-   - Saves files using server-generated UUID names (`<uuid>.<ext>`) to prevent directory traversal exploits.
-3. **Text Extraction**:
-   - **PDF**: PyMuPDF (`fitz`) parses text page-by-page, recording 1-based page indexes for granular citations.
-   - **DOCX**: `python-docx` extracts structured paragraphs.
-   - **TXT**: Native UTF-8 stream reader with graceful character replacement.
-4. **Chunking**: `RecursiveCharacterTextSplitter` segments text into chunks (default: 1,000 characters with 150-character overlap) while preserving source page metadata.
-5. **Local Vector Embeddings**: FastEmbed generates 384-dimensional embeddings in-process using the `BAAI/bge-small-en-v1.5` model, removing the latency and cost of third-party embedding APIs.
-6. **Vector Search & Scoping**:
-   - PostgreSQL `pgvector` computes cosine distance (`<=>`) between the query embedding and stored document chunks.
-   - Queries are filtered strictly by `chat_id` and document processing status (`READY`).
-   - Optional document-level filtering allows users to target queries at a single file.
-7. **Relevance Thresholding & Fallback**:
-   - Chunks exceeding the cosine distance threshold (default: `0.48`) are filtered out.
-   - If no chunks pass the threshold, LangGraph routes execution to an `insufficient_context` node that returns:
-     > *"I couldn't find enough relevant information in the uploaded documents to answer this question."*
-8. **Grounded Generation & Citations**:
-   - Gemini receives a strict anti-hallucination prompt instructing it to synthesize answers solely from retrieved blocks.
-   - The RAG engine compiles structured citations containing `document_id`, `filename`, `page_number`, `chunk_id`, and `relevance_score`.
+### Frontend
 
----
+For Vercel, use `frontend` as the project root, `npm run build` as the build command,
+and `dist` as the output directory. Set `VITE_API_URL` to the backend's public origin.
+[frontend/vercel.json](frontend/vercel.json) contains SPA rewrites.
 
-## 💬 Chat Experience
+Prefer same-site custom domains or a same-origin API proxy for cookie authentication.
+Cross-site deployments require `SESSION_COOKIE_SAMESITE=none` and Secure cookies;
+browser third-party-cookie policies may still block sessions.
 
-- **General Chat Mode**: Converse directly with Gemini for coding assistance, brainstorming, and general inquiries without requiring document uploads.
-- **All Documents Mode**: Ask questions across all documents attached to the current active chat session.
-- **Specific Document Mode**: Target a single uploaded document to narrow down retrieval scope.
-- **In-Composer Attachments**: Attach documents directly from the chat input using the `+` button, with visual indicators transitioning from `PROCESSING` to `READY`.
-- **Expandable Citations**: Each assistant response displays citation badges that reveal the exact source document, page number, and similarity score.
-- **New Chat Isolation & Retention**: Clicking **`+ New Chat`** creates a server-assigned owned conversation and opens an empty view. Earlier conversations and their documents remain available in Chat history. Explicitly confirmed conversation deletion removes its exchanges, document text, vector chunks and files; failed file cleanup can be retried. A minimal tombstone prevents late requests from recreating deleted IDs.
+`GET /health` is a liveness endpoint, not a continuous database-readiness check.
 
----
-
-## 🔐 Security & Production Considerations
-
-- **Server-Side Secret Management**: Google API keys and database credentials reside strictly on the server and are never exposed to the frontend client.
-- **User & Chat Isolation**: Queries filter by the authenticated owner and optional chat/document scope. Unowned legacy records are not exposed or auto-claimed. Messages/documents also have database constraints linking them to the conversation owner.
-- **Directory Traversal Protection**: Storage paths are validated with `_safe_file_path` to keep file reads and deletions strictly inside `STORAGE_DIR`. Files are stored under UUID filenames.
-- **Safe File Deletion**: Deleting a document or resetting a chat session removes physical files from disk and triggers cascading foreign key deletions across relational chunks and vector embeddings.
-- **Configurable CORS Policies**: Access is restricted to trusted origins via `ALLOWED_ORIGINS` and `FRONTEND_URL` settings.
-- **Input Validation**: Chat payloads use Pydantic schemas. Uploads check extensions, size and non-empty content before parsing; MIME/signature validation remains planned.
-- **Production Health Endpoint**: `GET /health` and `GET /` endpoints enable Railway and container orchestrators to monitor server liveness.
-
----
-
-## 📁 Project Structure
+## Project structure
 
 ```text
 Alex/
 ├── app/
-│   ├── agents/                 # LangGraph RAG state graph & workflow definitions
-│   │   ├── base_state.py
-│   │   └── rag_agent.py
-│   ├── api/                    # FastAPI routes, routers, and schemas
-│   │   ├── main.py             # App lifecycle, CORS, and health endpoints
-│   │   ├── schemas.py          # Pydantic request & response models
-│   │   └── v1/
-│   │       ├── router.py       # API v1 route aggregator
-│   │       └── endpoints/
-│   │           ├── chat.py     # RAG and general chat endpoints
-│   │           └── documents.py# Document upload, listing, and deletion
-│   ├── core/                   # Core infrastructure
-│   │   ├── config.py           # Pydantic BaseSettings configuration
-│   │   ├── db.py               # SQLAlchemy engine & pgvector initialization
-│   │   └── llm.py              # Gemini client & token usage parser
-│   ├── models/                 # SQLAlchemy ORM models
-│   │   ├── audit_log.py        # Query execution audit records
-│   │   ├── document.py         # Document entity
-│   │   └── document_chunk.py   # pgvector Vector(384) embedding chunks
-│   └── services/               # Business logic services
-│       ├── chunking_service.py # Recursive text chunking
-│       ├── document_processor.py # Multi-format text extractors (PDF, DOCX, TXT)
-│       ├── embedding_service.py# FastEmbed BAAI ONNX model singleton
-│       ├── rag_service.py      # Retrieval, prompt assembly, and citations
-│       └── vector_store.py     # pgvector cosine similarity search
-├── frontend/                   # React + Vite client application
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Chat.jsx        # Message list and empty state
-│   │   │   ├── ChatInput.jsx   # Auto-expanding composer & file attachment chip
-│   │   │   ├── ChatMessage.jsx # Message bubble & citation cards
-│   │   │   ├── Citations.jsx   # Source document citation details
-│   │   │   ├── DocumentList.jsx# Document status list
-│   │   │   ├── DocumentsView.jsx# Dedicated document management view
-│   │   │   ├── Header.jsx      # Navigation header with New Chat button
-│   │   │   └── UploadDocument.jsx # File upload drag-and-drop
-│   │   ├── services/
-│   │   │   └── api.js          # Client-side API service
-│   │   ├── App.jsx             # Main application state and session management
-│   │   └── main.jsx
-│   ├── package.json
-│   ├── tailwind.config.js
-│   ├── vercel.json             # Vercel SPA routing configuration
-│   └── vite.config.js
-├── tests/                      # Pipeline, memory and authentication tests
-│   ├── test_api.py
-│   ├── test_chat_api.py
-│   ├── test_chat_isolation.py
-│   ├── test_chunking.py
-│   ├── test_deployment_config.py
-│   ├── test_document_processor.py
-│   ├── test_documents_api.py
-│   ├── test_embedding.py
-│   ├── test_general_chat_api.py
-│   ├── test_llm.py
-│   ├── test_rag_agent.py
-│   ├── test_rag_service.py
-│   └── test_vector_store.py
-├── .env.example                # Backend environment variable template
-├── Dockerfile                  # Production container definition
-├── docker-compose.yml          # Local containerized Postgres + pgvector stack
-├── railway.json                # Railway build & deployment configuration
-└── requirements.txt            # Python dependencies
+│   ├── agents/                # LangGraph workflow and state
+│   ├── api/                   # FastAPI schemas, dependencies, and v1 endpoints
+│   ├── config.py              # Environment-backed settings
+│   ├── core/                  # Database, migrations, authentication, and Gemini client
+│   ├── models/                # Users, sessions, conversations, turns, documents, and audit
+│   ├── services/              # Memory, history, authorization, ingestion, and retrieval
+│   └── tasks/                 # Celery task modules
+├── frontend/
+│   ├── src/auth/              # Authentication provider and screens
+│   ├── src/components/        # Chat, history sidebar, documents, and citations
+│   ├── src/services/          # Credentialed API client
+│   ├── src/state/             # Conversation workspace controller and React hook
+│   └── tests/                 # API and workspace regression tests
+├── migrations/                # Additive SQL migrations 001–003
+├── tests/                     # Backend unit and integration tests
+├── docs/                      # Architecture decisions and implementation reports
+├── .github/workflows/         # CI checks
+├── .env.example               # Backend configuration template
+├── docker-compose.yml         # Local PostgreSQL, Redis, API, and worker services
+├── Dockerfile
+└── requirements.txt
 ```
 
----
+## Roadmap
 
-## ⚙️ Local Development
+- Token streaming, cancellation, and incremental response rendering.
+- Hybrid vector/full-text retrieval with configurable result fusion.
+- Reproducible RAG evaluation for retrieval, faithfulness, citations, and latency.
+- Background document ingestion using the configured worker infrastructure.
+- Email verification, account recovery, and additional identity protections.
+- Scheduled cleanup retries, storage quotas, and operational retention tooling.
 
-### Prerequisites
-- **Python**: 3.11 or higher
-- **Node.js**: 18 or higher & npm
-- **Docker**: For running PostgreSQL with `pgvector`
-- **Google Gemini API Key**: Obtainable from [Google AI Studio](https://aistudio.google.com/)
+Current limitations include synchronous ingestion, no cross-tab live synchronization,
+and no published production-scale retrieval or answer-quality benchmarks.
 
-### Step 1: Clone Repository
-```bash
-git clone https://github.com/ankesh15/Alex.git
-cd Alex
-```
+## Documentation and contributing
 
-### Step 2: Set Up Backend Virtual Environment
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
+- [Repository review and upgrade plan](docs/upgrade-plan.md)
+- [Conversation memory](docs/feature1-memory.md)
+- [Authentication and authorization](docs/feature4-authentication.md)
+- [Persistent history, migrations, and deletion behavior](docs/feature5-history.md)
 
-### Step 3: Install Backend Requirements
-```bash
-pip install -r requirements.txt
-```
-
-### Step 4: Configure Backend Environment
-```bash
-cp .env.example .env
-# On existing installations, add the new authentication variables from .env.example.
-```
-Edit `.env` and configure your credentials:
-```env
-GOOGLE_API_KEY=your_google_gemini_api_key
-DATABASE_URL=postgresql://postgres:postgrespassword@localhost:5432/alex_db
-```
-
-### Step 5: Start PostgreSQL with pgvector
-```bash
-docker compose up -d postgres
-```
-
-### Step 6: Start FastAPI Backend
-```bash
-uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
-```
-The API is available at `http://localhost:8000`. Interactive documentation is accessible at `http://localhost:8000/docs`.
-
-### Step 7: Install Frontend Dependencies
-In a separate terminal:
-```bash
-cd frontend
-npm install
-```
-
-### Step 8: Start Vite Frontend
-```bash
-npm run dev
-```
-Open `http://localhost:5173` in your browser.
-
----
-
-## 🔑 Environment Variables
-
-> [!NOTE]
-> Never commit actual secret keys or credentials to version control.
-
-### Backend (`.env`)
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `GOOGLE_API_KEY` | Yes | *None* | Google Gemini API key from Google AI Studio. |
-| `GEMINI_MODEL` | No | `gemini-2.5-flash` | Gemini model variant used for inference. |
-| `DATABASE_URL` | Yes | `postgresql://...` | PostgreSQL connection string with `pgvector` support. |
-| `ALLOWED_ORIGINS` | No | `http://localhost:5173,...` | Comma-separated list of allowed CORS origins. |
-| `FRONTEND_URL` | No | *None* | Production Vercel domain (appended to allowed origins). |
-| `STORAGE_DIR` | No | `storage/documents` | Filesystem path for uploaded files (`/app/storage/documents` on Railway). |
-| `MAX_UPLOAD_SIZE_MB` | No | `20` | Maximum file upload size limit in megabytes. |
-| `EMBEDDING_MODEL` | No | `BAAI/bge-small-en-v1.5` | FastEmbed sentence embedding model. |
-| `EMBEDDING_DIMENSION` | No | `384` | Embedding vector dimension for pgvector storage. |
-| `CHUNK_SIZE` | No | `1000` | Target character size for document chunks. |
-| `CHUNK_OVERLAP` | No | `150` | Character overlap between consecutive chunks. |
-| `RAG_TOP_K` | No | `5` | Maximum number of chunks retrieved per query. |
-| `RAG_SIMILARITY_THRESHOLD` | No | `0.48` | Maximum cosine distance for relevance filtering. |
-| `MEMORY_MAX_TURNS` | No | `8` | Maximum recent successful exchanges per conversation and scope in model context. |
-| `MEMORY_MAX_CHARS` | No | `12000` | Character budget for history, preserving user/assistant pairs; stored text remains complete. |
-| `APP_ENV` | No | `development` | Set `production` for production cookie safeguards. |
-| `SESSION_COOKIE_SECURE` | No | `true` | Secure cookies; `.env.example` explicitly uses false for local HTTP. |
-| `SESSION_COOKIE_SAMESITE` | No | `lax` | `lax`, `strict`, or `none`; `none` requires Secure cookies. |
-| `SESSION_MAX_AGE_SECONDS` | No | `604800` | Absolute session lifetime. |
-| `SESSION_IDLE_SECONDS` | No | `43200` | Idle session lifetime. |
-| `AUTH_RATE_MAX_ATTEMPTS` | No | `20` | Combined signup/login requests per peer IP/window. |
-| `AUTH_RATE_WINDOW_SECONDS` | No | `300` | Shared database throttle window. |
-
-### Frontend (`frontend/.env`)
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `VITE_API_URL` | Yes | `http://localhost:8000` | Base URL of the backend API (e.g., your Railway URL in production). |
-
----
-
-## 🔌 API Endpoints
-
-### Health Checks
-- **`GET /`**: Platform service status and API metadata.
-- **`GET /health`**: Health check probe returning `{"status": "ok"}` for container orchestrators.
-
-### Conversational Chat
-- **`POST /api/v1/chat`**: Execute document-grounded RAG query.
-  - **Body**: `{ "question": str, "document_id": Optional[str], "chat_id": Optional[str], "top_k": Optional[int] }`
-  - **Response**: Grounded answer, structured citations list, task ID, and token usage metrics.
-- **`POST /api/v1/chat/general`**: Direct conversational query without document retrieval.
-  - **Body**: `{ "question": str, "chat_id": Optional[str] }`
-  - Requires the session cookie and `X-CSRF-Token`, as does document-grounded chat.
-  - **Response**: Generated answer and token usage metrics.
-
-### Authentication
-- **`POST /api/v1/auth/signup`** and **`POST /api/v1/auth/login`**: JSON `{ "email": str, "password": str }`; set an HttpOnly session cookie and return user metadata, CSRF token and expiration.
-- **`GET /api/v1/auth/me`**: Restore the current user/CSRF token using the session cookie.
-- **`POST /api/v1/auth/logout`**: Revoke the current session and clear its cookie; requires CSRF.
-- **`GET /api/v1/chat/{chat_id}/history`**: Owner-only bounded transcript read with `limit` and `before_turn`; no conversation CRUD/sidebar in this increment.
-
-### Document Management
-All document operations require an authenticated session. Mutations additionally require `X-CSRF-Token`. Omitting a chat filter lists/searches only the authenticated user's documents.
-- **`POST /api/v1/documents/upload`**: Upload and ingest document (`multipart/form-data`: `file`, `chat_id`).
-- **`GET /api/v1/documents`**: List all uploaded documents, with optional `?chat_id=` filtering.
-- **`GET /api/v1/documents/{document_id}`**: Retrieve document metadata, processing status, and page count.
-- **`DELETE /api/v1/documents/{document_id}`**: Delete a document, its physical disk file, and associated vector chunks.
-- **`DELETE /api/v1/documents/chat/{chat_id}`**: Delete all documents, physical files, and embeddings associated with a chat session.
-
----
-
-## Conversation history API
-
-All routes require an active authenticated session. POST/PATCH/DELETE additionally require the existing `X-CSRF-Token`; the server supplies ownership, never the client.
-
-| Method | Path | Behavior |
-| --- | --- | --- |
-| POST | `/api/v1/conversations` | Create a conversation, optional `title` |
-| GET | `/api/v1/conversations?limit=25&cursor=…` | Owned active conversations, newest first, `next_cursor` |
-| GET | `/api/v1/conversations/{id}` | Metadata and last saved memory scope |
-| PATCH | `/api/v1/conversations/{id}` | Rename with `{ "title": "Research" }` |
-| GET | `/api/v1/conversations/{id}/messages?limit=25` | Latest complete exchanges as user/assistant messages |
-| DELETE | `/api/v1/conversations/{id}` | Delete messages and attached documents; report `cleanup_pending` |
-
-Message limits count complete exchanges (up to twice as many individual messages). Use `next_before_turn` as the next request's `before_turn` and retain `through_turn` to page older history without including new exchanges. Limits are 1–100. Missing, foreign, deleted and legacy unowned conversations return 404; only an owner's repeat DELETE can retry pending cleanup. The original `/chat/{id}/history` turn view remains available over the same store.
-
----
-
-## 🧪 Testing
-
-The repository contains an automated test suite verifying API contracts, document parsing, embeddings, pgvector operations, LangGraph workflows, and chat isolation.
-
-```bash
-# Run the complete backend suite (PostgreSQL integration checks skip unless configured)
-pytest -v
-
-# Run the frontend production build verification
-cd frontend && npm test && npm run build
-```
-
-The test suite leverages an in-memory SQLite database with an algorithmic Python fallback for cosine distance calculations, enabling full unit test execution without requiring an active PostgreSQL container.
-
-The existing embedding tests require the FastEmbed model to be cached or downloadable. New memory tests mock Gemini and retrieval. To verify the migration and concurrent writes on real PostgreSQL, point `MEMORY_TEST_DATABASE_URL` only at a disposable database named `alex_memory_test*` and run `pytest tests/test_memory_postgres.py tests/test_auth_postgres.py tests/test_history_postgres.py -v`. The frontend currently has no lint script; a build is not a substitute for linting.
-
-Before deploying the history increment, apply all three additive migrations with `python -m app.core.migrate`, using the intended database via environment configuration. See [history commands, verification results, migration strategy and limitations](docs/feature5-history.md). Authentication configuration remains described in [Feature 4](docs/feature4-authentication.md).
-
----
-
-## 🚢 Deployment
-
-### Architecture
-
-```
-User Browser
-     │
-     ├── HTTPS (Static Assets) ──► Vercel (React + Vite SPA)
-     │
-     └── HTTPS (API Requests)  ──► Railway (Docker Container / FastAPI)
-                                        │
-                                        ├── Internal TCP ──► Railway PostgreSQL + pgvector
-                                        │
-                                        └── Volume Mount ──► Railway Persistent Storage (/app/storage)
-```
-
-### Production Configuration
-
-Authentication deployment requires `APP_ENV=production`, `SESSION_COOKIE_SECURE=true`, explicit CORS origins, and HTTPS. The session cookie is `__Host-alex_session` in Secure mode. For distinct Vercel/Railway sites, `SESSION_COOKIE_SAMESITE=none` is necessary, but browser third-party-cookie policies may still block access; prefer same-site custom domains or a same-origin API proxy. Local HTTP uses `SESSION_COOKIE_SECURE=false` explicitly. Apply `python -m app.core.migrate` before restarting the upgraded backend and take the old unauthenticated version offline during the upgrade. [Deployment procedure](docs/feature4-authentication.md).
-
-1. **Backend & Database (Railway)**:
-   - Built via the root [Dockerfile](Dockerfile) and configured via [railway.json](railway.json).
-   - Dynamic port binding via `$PORT` environment variable.
-   - Healthcheck configured at `/health`.
-   - Railway PostgreSQL provisioned with `pgvector` extension.
-   - A persistent volume mounted at `/app/storage` guarantees document preservation during container redeployments.
-   - Environment variables required: `GOOGLE_API_KEY`, `DATABASE_URL`, `STORAGE_DIR=/app/storage/documents`, `FRONTEND_URL`.
-
-2. **Frontend (Vercel)**:
-   - Root directory set to `frontend`.
-   - Build command: `npm run build` (output: `dist`).
-   - [vercel.json](frontend/vercel.json) specifies Single-Page Application (SPA) rewrites routing all traffic to `/index.html`.
-   - Environment variable required: `VITE_API_URL` set to the public Railway backend URL (no trailing slash).
-
----
-
-## 🔮 Future Improvements
-
-- **Conversation Reopening & Sidebar**: Add authenticated conversation CRUD, pagination and browser reopening on the new persistent memory storage.
-- **Live Web Research**: Integrate real-time search engine APIs to corroborate document data with verified web sources.
-- **Automated Research Report Generation**: Enable users to export synthesized multi-document research findings into structured Markdown or PDF reports.
-- **Identity Enhancements**: Add verified email, password recovery, MFA/passkeys and organization-level authorization to the existing user/session infrastructure.
-- **Asynchronous Processing Queues**: Offload heavy document ingestion jobs to the configured Celery workers and Redis broker for large document batches.
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
+For contributions, open an issue describing the problem or proposed change, keep pull
+requests focused, add regression coverage for behavior changes, and run the relevant
+checks above. Update configuration examples and migration documentation when needed.
+Do not include API keys, database credentials, uploaded files, or local database artifacts.
