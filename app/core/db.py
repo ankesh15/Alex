@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import settings
 
@@ -18,6 +18,8 @@ def init_db():
     # Import models to ensure they are registered on Base.metadata
     from app.models.document import Document  # noqa: F401
     from app.models.document_chunk import DocumentChunk  # noqa: F401
+    from app.models.conversation import Conversation, ConversationTurn  # noqa: F401
+    from app.models.user import User, UserSession, AuthRateLimit  # noqa: F401
 
     # 1. Enable pgvector extension if connected to PostgreSQL
     if "postgresql" in DATABASE_URL:
@@ -26,23 +28,27 @@ def init_db():
                 conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
                 conn.commit()
         except Exception as e:
-            import logging
-            logging.warning(f"Could not enable pgvector extension: {e}")
+            raise RuntimeError("Could not initialize pgvector; verify database provisioning.") from e
 
     # 2. Create tables
     try:
         Base.metadata.create_all(bind=engine)
     except Exception as e:
-        import logging
-        logging.warning(f"Could not initialize DB tables on startup: {e}")
+        raise RuntimeError("Could not initialize database tables.") from e
 
-    # 3. Lightweight migration safety for documents.chat_id
-    if "postgresql" in DATABASE_URL:
-        try:
-            with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS chat_id VARCHAR(64);"))
-                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_documents_chat_id ON documents (chat_id);"))
-                conn.commit()
-        except Exception as e:
-            import logging
-            logging.warning(f"Could not verify or apply chat_id column migration: {e}")
+    # Ownership is security-critical: refuse to serve a partially migrated schema.
+    inspector = inspect(engine)
+    for table in ["documents", "conversations", "conversation_turns", "agent_audit_logs"]:
+        if "user_id" not in {c["name"] for c in inspector.get_columns(table)}:
+            raise RuntimeError("Authentication schema is missing. Run python -m app.core.migrate before deployment.")
+    if engine.dialect.name == "postgresql":
+        for table, constraint in [("documents", "fk_document_conversation_owner"),
+                                  ("conversation_turns", "fk_turn_conversation_owner")]:
+            if constraint not in {fk["name"] for fk in inspector.get_foreign_keys(table)}:
+                raise RuntimeError("Ownership constraints are missing. Run python -m app.core.migrate before deployment.")
+    if not {"title", "title_is_custom", "deleted_at"}.issubset(
+        {c["name"] for c in inspector.get_columns("conversations")}
+    ):
+        raise RuntimeError("History schema is missing. Run python -m app.core.migrate before deployment.")
+    if "chat_id" not in {c["name"] for c in inspector.get_columns("agent_audit_logs")}:
+        raise RuntimeError("History audit schema is missing. Run python -m app.core.migrate before deployment.")

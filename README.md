@@ -10,7 +10,7 @@
 [![FastEmbed](https://img.shields.io/badge/FastEmbed-ONNX_CPU-FF6F00.svg?style=flat)](https://github.com/qdrant/fastembed)
 [![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 
-ALEX is an enterprise-grade AI knowledge and research assistant that pairs a modern, ChatGPT-style conversational interface with a LangGraph-orchestrated Retrieval-Augmented Generation (RAG) pipeline to deliver grounded answers, precise document citations, and strict session-isolated document workflows.
+ALEX pairs a modern, ChatGPT-style conversational interface with a LangGraph-orchestrated Retrieval-Augmented Generation (RAG) pipeline to deliver grounded answers, document citations, and chat-scoped document workflows.
 
 ---
 
@@ -24,12 +24,14 @@ ALEX is an enterprise-grade AI knowledge and research assistant that pairs a mod
 
 ## ✨ Features
 
+- **Authentication & Authorization**: Secure signup/login/logout, PostgreSQL-backed revocable sessions, CSRF protections, and user ownership on documents, conversation memory, history reads, and retrieval. See [authentication setup](docs/feature4-authentication.md).
 - **Dual Chat Experience**: Toggle effortlessly between general conversational AI mode and grounded document research mode.
-- **Document-Grounded RAG**: Graph-orchestrated semantic retrieval ensures answers are synthesized strictly from source documents to eliminate hallucinations.
+- **Persistent Conversation Memory**: Supply `chat_id` in either chat endpoint to remember recent turns in PostgreSQL, separated by General/All Documents/specific-document scope. See [memory setup and limitations](docs/feature1-memory.md).
+- **Document-Grounded RAG**: Graph-orchestrated semantic retrieval and grounding prompts use source documents to support answers. Faithfulness still requires evaluation.
 - **Multi-Format Ingestion**: Ingest, validate, and parse PDF, DOCX, and TXT files with automatic page metadata tracking.
 - **Structured Source Citations**: Inspect exact source filenames, page numbers, and cosine similarity relevance scores for every generated claim.
 - **Chat-Scoped Document Isolation**: Uploaded files and vector records are bound to unique session identifiers (`chat_id`), preventing cross-session context leakage.
-- **Ephemeral Session Cleanup**: Starting a new chat automatically purges session files from disk and removes relational metadata and vector embeddings from PostgreSQL.
+- **Persistent Chat History**: Create, rename, reopen and explicitly delete owned conversations from a responsive sidebar. Conversation lists and saved exchanges are paginated. New Chat retains previous messages and documents; deletion removes them with retryable file cleanup. See [history implementation and migration](docs/feature5-history.md).
 - **ChatGPT-Style Web Interface**: Polished, responsive user experience featuring an auto-expanding composer, suggestion prompts, in-composer file attachments, and token usage metrics.
 
 ---
@@ -78,7 +80,13 @@ When no document context is selected (General Chat mode), ALEX bypasses vector s
 User Question ──► React Frontend ──► FastAPI (/api/v1/chat/general) ──► Google Gemini ──► Direct Answer
 ```
 
-This dual-track design conserves compute, eliminates database queries for conversational prompts, and delivers instant responses for general inquiries.
+General chat bypasses document retrieval. With `chat_id`, it loads bounded conversation history from PostgreSQL; requests without `chat_id` remain stateless for memory while still validating their authenticated session in PostgreSQL.
+
+### Conversation Memory (first upgrade increment)
+
+Document follow-ups now run through `contextualize_question → retrieve_context → generation → citations` in the existing LangGraph. Recent successful turns resolve references; answers and citations still require fresh retrieved document context. Completed exchanges are stored atomically with citations, token usage, and scope. Concurrent stale writes return HTTP 409; unavailable storage returns HTTP 503.
+
+The [repository review and prioritized plan](docs/upgrade-plan.md) covers the remaining increments. **Authentication and authorization are now implemented in Feature 4.** All chat/document endpoints require an active cookie session; identifiers never establish ownership. Existing unowned data stays quarantined. Feature 5 adds an authenticated history sidebar, reopening, pagination and explicit conversation deletion. Reload restores the last selected owned conversation. New Chat preserves earlier messages and attached documents. Streaming and hybrid search remain deferred.
 
 ---
 
@@ -90,9 +98,9 @@ This dual-track design conserves compute, eliminates database queries for conver
 | **API Gateway** | FastAPI, Pydantic v2, Uvicorn | RESTful endpoints, request/response validation, CORS governance, and unified error handling. |
 | **Document Processing** | PyMuPDF, python-docx, LangChain | File validation, text extraction, page number indexing, and recursive character chunking. |
 | **Embedding Service** | FastEmbed (`BAAI/bge-small-en-v1.5`) | In-process, CPU-optimized 384-dimensional ONNX vector generation with zero PyTorch/CUDA overhead. |
-| **Vector & Relational Store** | PostgreSQL 16 + `pgvector` | Relational document tracking with native HNSW/IVFFlat cosine distance similarity search. |
+| **Vector & Relational Store** | PostgreSQL 16 + `pgvector` | Relational document tracking with cosine distance similarity search; vector index migrations remain planned. |
 | **RAG Orchestration** | LangGraph, StateGraph | Deterministic DAG workflow managing context retrieval, threshold validation, answer synthesis, and citation assembly. |
-| **LLM Inference** | Google Gemini (`gemini-2.5-flash`) | Context-grounded synthesis at zero temperature to guarantee deterministic, faithful generation. |
+| **LLM Inference** | Google Gemini (`gemini-2.5-flash`) | Context-grounded synthesis at zero temperature; this does not guarantee deterministic or faithful generation. |
 
 ---
 
@@ -121,7 +129,7 @@ This dual-track design conserves compute, eliminates database queries for conver
 - **Session File Storage**: Local filesystem or Railway Persistent Volume mount (`/app/storage/documents`)
 
 ### Infrastructure & Deployment
-- **Containerization**: Docker (multi-stage Python 3.11 slim)
+- **Containerization**: Docker (single-stage Python 3.11 slim)
 - **Backend Hosting**: Railway (Docker runtime with dynamic `$PORT` assignment)
 - **Frontend Hosting**: Vercel (Edge CDN with SPA route rewrites)
 - **CI/CD**: GitHub Actions (Linting, Pytest, and Docker build validation)
@@ -162,18 +170,18 @@ This dual-track design conserves compute, eliminates database queries for conver
 - **Specific Document Mode**: Target a single uploaded document to narrow down retrieval scope.
 - **In-Composer Attachments**: Attach documents directly from the chat input using the `+` button, with visual indicators transitioning from `PROCESSING` to `READY`.
 - **Expandable Citations**: Each assistant response displays citation badges that reveal the exact source document, page number, and similarity score.
-- **New Chat Session Isolation**: Clicking **`+ New Chat`** creates a fresh session identifier (`chat_id`), resets conversation history, and invokes `DELETE /api/v1/documents/chat/{chat_id}` to purge previous session documents from disk, database, and vector storage.
+- **New Chat Isolation & Retention**: Clicking **`+ New Chat`** creates a server-assigned owned conversation and opens an empty view. Earlier conversations and their documents remain available in Chat history. Explicitly confirmed conversation deletion removes its exchanges, document text, vector chunks and files; failed file cleanup can be retried. A minimal tombstone prevents late requests from recreating deleted IDs.
 
 ---
 
 ## 🔐 Security & Production Considerations
 
 - **Server-Side Secret Management**: Google API keys and database credentials reside strictly on the server and are never exposed to the frontend client.
-- **Strict Chat-Level Isolation**: Document chunks and vector embeddings are indexed by `chat_id`. Queries cannot access documents from other sessions.
-- **Directory Traversal Protection**: Storage paths are validated with `_safe_file_path` to guarantee file reads and deletions remain strictly inside `STORAGE_DIR`. Files are stored under UUID filenames.
+- **User & Chat Isolation**: Queries filter by the authenticated owner and optional chat/document scope. Unowned legacy records are not exposed or auto-claimed. Messages/documents also have database constraints linking them to the conversation owner.
+- **Directory Traversal Protection**: Storage paths are validated with `_safe_file_path` to keep file reads and deletions strictly inside `STORAGE_DIR`. Files are stored under UUID filenames.
 - **Safe File Deletion**: Deleting a document or resetting a chat session removes physical files from disk and triggers cascading foreign key deletions across relational chunks and vector embeddings.
 - **Configurable CORS Policies**: Access is restricted to trusted origins via `ALLOWED_ORIGINS` and `FRONTEND_URL` settings.
-- **Robust Input Validation**: All payloads and file uploads are validated via Pydantic schemas and MIME/extension checks.
+- **Input Validation**: Chat payloads use Pydantic schemas. Uploads check extensions, size and non-empty content before parsing; MIME/signature validation remains planned.
 - **Production Health Endpoint**: `GET /health` and `GET /` endpoints enable Railway and container orchestrators to monitor server liveness.
 
 ---
@@ -227,7 +235,7 @@ Alex/
 │   ├── tailwind.config.js
 │   ├── vercel.json             # Vercel SPA routing configuration
 │   └── vite.config.js
-├── tests/                      # Pytest automated test suite (54 tests)
+├── tests/                      # Pipeline, memory and authentication tests
 │   ├── test_api.py
 │   ├── test_chat_api.py
 │   ├── test_chat_isolation.py
@@ -278,6 +286,7 @@ pip install -r requirements.txt
 ### Step 4: Configure Backend Environment
 ```bash
 cp .env.example .env
+# On existing installations, add the new authentication variables from .env.example.
 ```
 Edit `.env` and configure your credentials:
 ```env
@@ -333,6 +342,15 @@ Open `http://localhost:5173` in your browser.
 | `CHUNK_OVERLAP` | No | `150` | Character overlap between consecutive chunks. |
 | `RAG_TOP_K` | No | `5` | Maximum number of chunks retrieved per query. |
 | `RAG_SIMILARITY_THRESHOLD` | No | `0.48` | Maximum cosine distance for relevance filtering. |
+| `MEMORY_MAX_TURNS` | No | `8` | Maximum recent successful exchanges per conversation and scope in model context. |
+| `MEMORY_MAX_CHARS` | No | `12000` | Character budget for history, preserving user/assistant pairs; stored text remains complete. |
+| `APP_ENV` | No | `development` | Set `production` for production cookie safeguards. |
+| `SESSION_COOKIE_SECURE` | No | `true` | Secure cookies; `.env.example` explicitly uses false for local HTTP. |
+| `SESSION_COOKIE_SAMESITE` | No | `lax` | `lax`, `strict`, or `none`; `none` requires Secure cookies. |
+| `SESSION_MAX_AGE_SECONDS` | No | `604800` | Absolute session lifetime. |
+| `SESSION_IDLE_SECONDS` | No | `43200` | Idle session lifetime. |
+| `AUTH_RATE_MAX_ATTEMPTS` | No | `20` | Combined signup/login requests per peer IP/window. |
+| `AUTH_RATE_WINDOW_SECONDS` | No | `300` | Shared database throttle window. |
 
 ### Frontend (`frontend/.env`)
 
@@ -353,10 +371,18 @@ Open `http://localhost:5173` in your browser.
   - **Body**: `{ "question": str, "document_id": Optional[str], "chat_id": Optional[str], "top_k": Optional[int] }`
   - **Response**: Grounded answer, structured citations list, task ID, and token usage metrics.
 - **`POST /api/v1/chat/general`**: Direct conversational query without document retrieval.
-  - **Body**: `{ "question": str }`
+  - **Body**: `{ "question": str, "chat_id": Optional[str] }`
+  - Requires the session cookie and `X-CSRF-Token`, as does document-grounded chat.
   - **Response**: Generated answer and token usage metrics.
 
+### Authentication
+- **`POST /api/v1/auth/signup`** and **`POST /api/v1/auth/login`**: JSON `{ "email": str, "password": str }`; set an HttpOnly session cookie and return user metadata, CSRF token and expiration.
+- **`GET /api/v1/auth/me`**: Restore the current user/CSRF token using the session cookie.
+- **`POST /api/v1/auth/logout`**: Revoke the current session and clear its cookie; requires CSRF.
+- **`GET /api/v1/chat/{chat_id}/history`**: Owner-only bounded transcript read with `limit` and `before_turn`; no conversation CRUD/sidebar in this increment.
+
 ### Document Management
+All document operations require an authenticated session. Mutations additionally require `X-CSRF-Token`. Omitting a chat filter lists/searches only the authenticated user's documents.
 - **`POST /api/v1/documents/upload`**: Upload and ingest document (`multipart/form-data`: `file`, `chat_id`).
 - **`GET /api/v1/documents`**: List all uploaded documents, with optional `?chat_id=` filtering.
 - **`GET /api/v1/documents/{document_id}`**: Retrieve document metadata, processing status, and page count.
@@ -365,19 +391,40 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
+## Conversation history API
+
+All routes require an active authenticated session. POST/PATCH/DELETE additionally require the existing `X-CSRF-Token`; the server supplies ownership, never the client.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| POST | `/api/v1/conversations` | Create a conversation, optional `title` |
+| GET | `/api/v1/conversations?limit=25&cursor=…` | Owned active conversations, newest first, `next_cursor` |
+| GET | `/api/v1/conversations/{id}` | Metadata and last saved memory scope |
+| PATCH | `/api/v1/conversations/{id}` | Rename with `{ "title": "Research" }` |
+| GET | `/api/v1/conversations/{id}/messages?limit=25` | Latest complete exchanges as user/assistant messages |
+| DELETE | `/api/v1/conversations/{id}` | Delete messages and attached documents; report `cleanup_pending` |
+
+Message limits count complete exchanges (up to twice as many individual messages). Use `next_before_turn` as the next request's `before_turn` and retain `through_turn` to page older history without including new exchanges. Limits are 1–100. Missing, foreign, deleted and legacy unowned conversations return 404; only an owner's repeat DELETE can retry pending cleanup. The original `/chat/{id}/history` turn view remains available over the same store.
+
+---
+
 ## 🧪 Testing
 
 The repository contains an automated test suite verifying API contracts, document parsing, embeddings, pgvector operations, LangGraph workflows, and chat isolation.
 
 ```bash
-# Run the complete test suite (54 passed tests)
+# Run the complete backend suite (PostgreSQL integration checks skip unless configured)
 pytest -v
 
 # Run the frontend production build verification
-cd frontend && npm run build
+cd frontend && npm test && npm run build
 ```
 
 The test suite leverages an in-memory SQLite database with an algorithmic Python fallback for cosine distance calculations, enabling full unit test execution without requiring an active PostgreSQL container.
+
+The existing embedding tests require the FastEmbed model to be cached or downloadable. New memory tests mock Gemini and retrieval. To verify the migration and concurrent writes on real PostgreSQL, point `MEMORY_TEST_DATABASE_URL` only at a disposable database named `alex_memory_test*` and run `pytest tests/test_memory_postgres.py tests/test_auth_postgres.py tests/test_history_postgres.py -v`. The frontend currently has no lint script; a build is not a substitute for linting.
+
+Before deploying the history increment, apply all three additive migrations with `python -m app.core.migrate`, using the intended database via environment configuration. See [history commands, verification results, migration strategy and limitations](docs/feature5-history.md). Authentication configuration remains described in [Feature 4](docs/feature4-authentication.md).
 
 ---
 
@@ -399,6 +446,8 @@ User Browser
 
 ### Production Configuration
 
+Authentication deployment requires `APP_ENV=production`, `SESSION_COOKIE_SECURE=true`, explicit CORS origins, and HTTPS. The session cookie is `__Host-alex_session` in Secure mode. For distinct Vercel/Railway sites, `SESSION_COOKIE_SAMESITE=none` is necessary, but browser third-party-cookie policies may still block access; prefer same-site custom domains or a same-origin API proxy. Local HTTP uses `SESSION_COOKIE_SECURE=false` explicitly. Apply `python -m app.core.migrate` before restarting the upgraded backend and take the old unauthenticated version offline during the upgrade. [Deployment procedure](docs/feature4-authentication.md).
+
 1. **Backend & Database (Railway)**:
    - Built via the root [Dockerfile](Dockerfile) and configured via [railway.json](railway.json).
    - Dynamic port binding via `$PORT` environment variable.
@@ -417,10 +466,10 @@ User Browser
 
 ## 🔮 Future Improvements
 
-- **Conversational Memory Persistence**: Persist multi-turn conversation threads across sessions using a database-backed chat history store.
+- **Conversation Reopening & Sidebar**: Add authenticated conversation CRUD, pagination and browser reopening on the new persistent memory storage.
 - **Live Web Research**: Integrate real-time search engine APIs to corroborate document data with verified web sources.
 - **Automated Research Report Generation**: Enable users to export synthesized multi-document research findings into structured Markdown or PDF reports.
-- **User Authentication & Multi-Tenancy**: Introduce OAuth2/JWT user authentication for personalized document libraries and organization-level workspaces.
+- **Identity Enhancements**: Add verified email, password recovery, MFA/passkeys and organization-level authorization to the existing user/session infrastructure.
 - **Asynchronous Processing Queues**: Offload heavy document ingestion jobs to the configured Celery workers and Redis broker for large document batches.
 
 ---

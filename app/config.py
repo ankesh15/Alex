@@ -1,7 +1,7 @@
 import os
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 
 
 class Settings(BaseSettings):
@@ -37,6 +37,26 @@ class Settings(BaseSettings):
     RAG_TOP_K: int = Field(default=5)
     # Cosine distance threshold (0.0 is identical; <= threshold is considered relevant)
     RAG_SIMILARITY_THRESHOLD: float = Field(default=0.48)
+
+    # Bounds apply to model context; full exchanges remain in PostgreSQL.
+    MEMORY_MAX_TURNS: int = Field(default=8, ge=1, le=100)
+    MEMORY_MAX_CHARS: int = Field(default=12000, ge=256, le=100000)
+
+    APP_ENV: Literal["development", "test", "production"] = "development"
+    SESSION_COOKIE_SECURE: bool = True
+    SESSION_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
+    SESSION_MAX_AGE_SECONDS: int = Field(default=604800, ge=300, le=2592000)
+    SESSION_IDLE_SECONDS: int = Field(default=43200, ge=60, le=604800)
+    AUTH_RATE_MAX_ATTEMPTS: int = Field(default=20, ge=1, le=1000)
+    AUTH_RATE_WINDOW_SECONDS: int = Field(default=300, ge=1, le=3600)
+
+    @model_validator(mode="after")
+    def validate_auth_security(self):
+        if "*" in self.cors_origins:
+            raise ValueError("Cookie authentication requires explicit CORS origins, not a wildcard.")
+        if (self.APP_ENV == "production" or self.SESSION_COOKIE_SAMESITE == "none") and not self.SESSION_COOKIE_SECURE:
+            raise ValueError("Production and SameSite=None sessions require Secure cookies.")
+        return self
 
     @property
     def cors_origins(self) -> List[str]:

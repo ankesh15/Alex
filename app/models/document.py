@@ -1,15 +1,18 @@
 import uuid
 import datetime
-from sqlalchemy import Column, String, Text, Integer, DateTime
+from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey, ForeignKeyConstraint
 from sqlalchemy.orm import relationship
 from app.core.db import Base
 
 
 class Document(Base):
     __tablename__ = "documents"
+    __table_args__ = (ForeignKeyConstraint(["chat_id", "user_id"], ["conversations.id", "conversations.user_id"],
+                                         name="fk_document_conversation_owner"),)
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
     chat_id = Column(String(64), nullable=True, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     filename = Column(String(255), nullable=False)
     stored_filename = Column(String(255), nullable=False)
     file_type = Column(String(10), nullable=False, index=True)

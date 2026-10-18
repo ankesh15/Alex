@@ -1,11 +1,15 @@
 from typing import TypedDict, List, Dict, Any, Optional
 from sqlalchemy.orm import Session
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
-from app.services.rag_service import RAGService, INSUFFICIENT_CONTEXT_MESSAGE
+from app.services.rag_service import RAGService, INSUFFICIENT_CONTEXT_MESSAGE, HISTORY_RULES
 
 
 class RAGState(TypedDict):
     question: str
+    history: List[BaseMessage]
+    retrieval_question: str
+    rewrite_token_usage: Dict[str, int]
     document_id: Optional[str]
     chat_id: Optional[str]
     top_k: int
@@ -19,28 +23,35 @@ class RAGState(TypedDict):
     error: Optional[str]
 
 
-def create_rag_graph(db: Session, llm=None):
+def create_rag_graph(db: Session, llm=None, *, user_id: str):
     """
     Creates and compiles a simple, maintainable LangGraph workflow for Document RAG:
 
     START
       ↓
-    retrieve_context
+    contextualize_question → retrieve_context
       ↓
     check_context
       ├── no_context  → insufficient_context → END
       └── has_context → generate_answer → build_citations → END
     """
 
+    def contextualize_question_node(state: RAGState) -> Dict[str, Any]:
+        question, usage = RAGService.contextualize_question(state["question"], state.get("history", []), llm=llm)
+        return {"retrieval_question": question, "rewrite_token_usage": usage}
+
     def retrieve_context_node(state: RAGState) -> Dict[str, Any]:
         chunks = RAGService.retrieve_context(
             db=db,
-            question=state["question"],
+            question=state.get("retrieval_question", state["question"]),
             document_id=state.get("document_id"),
             chat_id=state.get("chat_id"),
             top_k=state.get("top_k"),
-            threshold=state.get("threshold")
+            threshold=state.get("threshold"),
+            user_id=user_id
         )
+        # Retrieval returns plain dictionaries; release its connection before Gemini.
+        db.commit()
         return {"chunks": chunks}
 
     def check_context_condition(state: RAGState) -> str:
@@ -54,15 +65,24 @@ def create_rag_graph(db: Session, llm=None):
             "answer": INSUFFICIENT_CONTEXT_MESSAGE,
             "citations": [],
             "status": "NO_CONTEXT",
-            "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            "token_usage": state.get("rewrite_token_usage", {})
         }
 
     def generate_answer_node(state: RAGState) -> Dict[str, Any]:
         chunks = state["chunks"]
         context_str = RAGService.build_context(chunks)
         prompt = RAGService.build_prompt(state["question"], context_str)
+        if state.get("history"):
+            prompt = [
+                SystemMessage(content=HISTORY_RULES),
+                *state["history"],
+                HumanMessage(content=prompt),
+            ]
         answer, token_usage = RAGService.generate_answer(prompt, llm=llm)
-        is_err = answer.startswith("Alex couldn't generate an answer")
+        rewrite_usage = state.get("rewrite_token_usage", {})
+        token_usage = {key: token_usage.get(key, 0) + rewrite_usage.get(key, 0)
+                       for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
+        is_err = RAGService.is_generation_error(answer)
         return {
             "context_str": context_str,
             "answer": answer,
@@ -79,13 +99,15 @@ def create_rag_graph(db: Session, llm=None):
     workflow = StateGraph(RAGState)
 
     # Add workflow nodes
+    workflow.add_node("contextualize_question", contextualize_question_node)
     workflow.add_node("retrieve_context", retrieve_context_node)
     workflow.add_node("insufficient_context", insufficient_context_node)
     workflow.add_node("generate_answer", generate_answer_node)
     workflow.add_node("build_citations", build_citations_node)
 
     # Entry point
-    workflow.set_entry_point("retrieve_context")
+    workflow.set_entry_point("contextualize_question")
+    workflow.add_edge("contextualize_question", "retrieve_context")
 
     # Conditional branching based on context availability
     workflow.add_conditional_edges(

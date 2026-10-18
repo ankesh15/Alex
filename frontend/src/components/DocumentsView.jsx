@@ -37,7 +37,7 @@ export default function DocumentsView({
       <div className="p-3 bg-sky-50/70 border border-sky-200/60 rounded-xl text-xs text-sky-800 flex items-center space-x-2.5">
         <Info className="w-4 h-4 text-sky-600 shrink-0" />
         <span>
-          Files belong only to this chat session. When you click <strong>New Chat</strong>, all files and embeddings for this chat are automatically deleted.
+          Files stay with this conversation so you can reopen it later. Deleting the conversation removes its documents and embeddings.
         </span>
       </div>
 

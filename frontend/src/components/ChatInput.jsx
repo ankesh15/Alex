@@ -288,7 +288,7 @@ export default function ChatInput({
 
       {/* Subtle Disclaimer */}
       <div className="text-[11px] text-center text-slate-400 mt-2">
-        Files are temporary and isolated to this chat session. Use New Chat to start fresh.
+        Files stay with this conversation. Use the history sidebar to reopen previous chats.
       </div>
     </div>
   );

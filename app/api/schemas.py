@@ -1,6 +1,42 @@
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: SecretStr = Field(min_length=1, max_length=128)
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        import re
+        value = value.strip().lower()
+        if not value.isascii() or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+            raise ValueError("Enter a valid email address.")
+        return value
+
+
+class SignupRequest(LoginRequest):
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: SecretStr) -> SecretStr:
+        password = value.get_secret_value()
+        if len(password) < 12 or not password.strip():
+            raise ValueError("Password must contain at least 12 characters and cannot be all whitespace.")
+        return value
+
+
+class AuthUserResponse(BaseModel):
+    id: str
+    email: str
+
+
+class AuthResponse(BaseModel):
+    user: AuthUserResponse
+    csrf_token: str
+    expires_at: datetime
 
 
 class TokenUsageSchema(BaseModel):
@@ -48,10 +84,11 @@ class DocumentDetailResponse(DocumentResponse):
 
 # Chat & RAG Schemas
 class ChatRequest(BaseModel):
-    question: str
-    document_id: Optional[str] = None
-    chat_id: Optional[str] = None
-    top_k: Optional[int] = None
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(max_length=12000)
+    document_id: Optional[str] = Field(default=None, min_length=1, max_length=36)
+    chat_id: Optional[str] = Field(default=None, min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    top_k: Optional[int] = Field(default=None, ge=1, le=100)
 
 
 class CitationSchema(BaseModel):
@@ -70,10 +107,38 @@ class ChatResponse(BaseModel):
 
 
 class GeneralChatRequest(BaseModel):
-    question: str
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(max_length=12000)
+    chat_id: Optional[str] = Field(default=None, min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class GeneralChatResponse(BaseModel):
     answer: str
     token_usage: Optional[TokenUsageSchema] = None
 
+
+class ConversationCreate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("title")
+    @classmethod
+    def clean_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        title = " ".join(value.split())
+        if not title:
+            raise ValueError("Conversation title cannot be empty.")
+        return title
+
+
+class ConversationRename(ConversationCreate):
+    title: str = Field(min_length=1, max_length=120)
+
+
+class ConversationResponse(BaseModel):
+    id: str
+    title: str
+    revision: int
+    created_at: datetime
+    updated_at: datetime

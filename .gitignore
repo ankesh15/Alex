@@ -44,13 +44,18 @@ pytestdebug.log
 # Environment variables & secrets
 .env
 *.env
+.env.*
 !.env.example
+!.env.*.example
 !frontend/.env.example
 
 # Frontend build & dependencies
 frontend/node_modules/
 frontend/dist/
 frontend/.env
+node_modules/
+dist-ssr/
+*.tsbuildinfo
 
 # Virtual environments
 venv/
@@ -58,6 +63,7 @@ env/
 ENV/
 env.bak/
 venv.bak/
+.venv/
 
 # Document Storage
 storage/documents/*
@@ -82,3 +88,34 @@ logs/
 # Docker volumes / data
 postgres_data/
 redis_data/
+
+# Local databases and session files (may contain private chat data)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.ses
+
+# Additional development / test caches
+.mypy_cache/
+.ruff_cache/
+.pyre/
+coverage/
+test-results/
+playwright-report/
+
+# Generated local review patches, screenshots and verification output
+/docs/*-only.patch
+/docs/verification/
+
+# Local frontend overrides and deployment metadata
+frontend/*.local
+.vercel/

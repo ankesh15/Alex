@@ -1,3 +1,4 @@
+from app.models.user import User
 import uuid
 import pytest
 from sqlalchemy import create_engine
@@ -21,6 +22,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture
 def db_session():
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(User.__table__.insert().values(id="test-user", email="pipeline@example.test", password_hash="unused-test-hash"))
     session = TestingSessionLocal()
     try:
         yield session
@@ -38,7 +41,7 @@ def test_document_chunk_relationship_and_cascading_delete(db_session):
         file_type="pdf",
         file_size=1024,
         status="READY"
-    )
+    , user_id="test-user")
     db_session.add(doc)
 
     emb = EmbeddingService.embed_text("Sample chunk text")
@@ -74,7 +77,7 @@ def test_vector_search_similarity(db_session):
         file_type="txt",
         file_size=2048,
         status="READY"
-    )
+    , user_id="test-user")
     db_session.add(doc)
 
     texts = [
@@ -96,11 +99,11 @@ def test_vector_search_similarity(db_session):
     db_session.commit()
 
     # Search query about astronomy
-    results = VectorStoreService.search(db_session, query="physics and stars", top_k=2)
+    results = VectorStoreService.search(db_session, query="physics and stars", top_k=2, user_id="test-user")
     assert len(results) == 2
     assert "Astrophysics" in results[0]["content"]
 
     # Search query about database
-    db_results = VectorStoreService.search(db_session, query="relational database query", top_k=1)
+    db_results = VectorStoreService.search(db_session, query="relational database query", top_k=1, user_id="test-user")
     assert len(db_results) == 1
     assert "PostgreSQL" in db_results[0]["content"]

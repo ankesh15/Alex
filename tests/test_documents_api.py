@@ -1,3 +1,4 @@
+from app.models.user import User
 import io
 import fitz
 import docx
@@ -24,6 +25,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture(autouse=True)
 def setup_test_db():
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(User.__table__.insert().values(id="test-user", email="pipeline@example.test", password_hash="unused-test-hash"))
 
     def override_get_db():
         db = TestingSessionLocal()

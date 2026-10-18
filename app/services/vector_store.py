@@ -5,6 +5,7 @@ from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.services.embedding_service import EmbeddingService
 from app.config import settings
+from app.services.authorization import active_documents
 
 
 def _cosine_distance_python(v1: List[float], v2: List[float]) -> float:
@@ -36,8 +37,12 @@ class VectorStoreService:
         query: str,
         document_id: Optional[str] = None,
         chat_id: Optional[str] = None,
-        top_k: Optional[int] = None
+        top_k: Optional[int] = None,
+        *, user_id: str
     ) -> List[Dict[str, Any]]:
+        if not user_id:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=401, detail="Authentication required.")
         if not query or not query.strip():
             return []
 
@@ -52,7 +57,7 @@ class VectorStoreService:
             query_stmt = (
                 db.query(DocumentChunk, Document, distance_expr.label("distance"))
                 .join(Document, DocumentChunk.document_id == Document.id)
-                .filter(Document.status == "READY")
+                .filter(Document.status == "READY", Document.user_id == user_id, *active_documents(user_id))
             )
 
             if chat_id:
@@ -83,7 +88,7 @@ class VectorStoreService:
             query_stmt = (
                 db.query(DocumentChunk, Document)
                 .join(Document, DocumentChunk.document_id == Document.id)
-                .filter(Document.status == "READY")
+                .filter(Document.status == "READY", Document.user_id == user_id, *active_documents(user_id))
             )
             if chat_id:
                 query_stmt = query_stmt.filter(Document.chat_id == chat_id)

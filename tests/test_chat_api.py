@@ -1,3 +1,4 @@
+from app.models.user import User
 from unittest.mock import patch, MagicMock
 import pytest
 from sqlalchemy import create_engine
@@ -29,6 +30,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture(autouse=True)
 def setup_test_db():
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(User.__table__.insert().values(id="test-user", email="pipeline@example.test", password_hash="unused-test-hash"))
 
     def override_get_db():
         db = TestingSessionLocal()
@@ -57,7 +60,7 @@ def test_chat_success_with_citations():
             file_type="pdf",
             file_size=1024,
             status="READY"
-        )
+        , user_id="test-user")
         content = "The Transformer architecture relies entirely on self-attention mechanisms without recurrence."
         chunk = DocumentChunk(
             document_id="doc-research-1",
@@ -142,7 +145,7 @@ def test_chat_document_id_filter():
             file_type="pdf",
             file_size=1024,
             status="READY"
-        )
+        , user_id="test-user")
         chunk_a = DocumentChunk(
             document_id="doc-a",
             chunk_index=0,
@@ -158,7 +161,7 @@ def test_chat_document_id_filter():
             file_type="pdf",
             file_size=1024,
             status="READY"
-        )
+        , user_id="test-user")
         chunk_b = DocumentChunk(
             document_id="doc-b",
             chunk_index=0,
@@ -205,7 +208,7 @@ def test_chat_gemini_api_failure_handled_gracefully():
             file_type="pdf",
             file_size=1024,
             status="READY"
-        )
+        , user_id="test-user")
         chunk = DocumentChunk(
             document_id="doc-fail",
             chunk_index=0,

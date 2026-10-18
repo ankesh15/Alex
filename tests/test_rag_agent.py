@@ -1,3 +1,4 @@
+from app.models.user import User
 import uuid
 import pytest
 from unittest.mock import MagicMock
@@ -26,6 +27,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture
 def db_session():
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(User.__table__.insert().values(id="test-user", email="pipeline@example.test", password_hash="unused-test-hash"))
     session = TestingSessionLocal()
     try:
         yield session
@@ -43,7 +46,7 @@ def test_rag_agent_successful_workflow(db_session):
         file_type="pdf",
         file_size=1024,
         status="READY"
-    )
+    , user_id="test-user")
     db_session.add(doc)
 
     content = "Raft is a consensus algorithm designed as an alternative to Paxos."
@@ -63,7 +66,7 @@ def test_rag_agent_successful_workflow(db_session):
         usage_metadata={"input_tokens": 40, "output_tokens": 12, "total_tokens": 52}
     )
 
-    graph = create_rag_graph(db=db_session, llm=mock_llm)
+    graph = create_rag_graph(db=db_session, llm=mock_llm, user_id="test-user")
     state = {
         "question": "What is Raft consensus algorithm?",
         "document_id": None,
@@ -92,7 +95,7 @@ def test_rag_agent_successful_workflow(db_session):
 def test_rag_agent_insufficient_context_workflow(db_session):
     # Empty DB - no documents present
     mock_llm = MagicMock()
-    graph = create_rag_graph(db=db_session, llm=mock_llm)
+    graph = create_rag_graph(db=db_session, llm=mock_llm, user_id="test-user")
 
     state = {
         "question": "Explain quantum chromodynamics.",
@@ -121,7 +124,7 @@ def test_rag_agent_insufficient_context_workflow(db_session):
 def test_rag_agent_document_specific_filter(db_session):
     # Doc 1: Biology
     doc1_id = str(uuid.uuid4())
-    doc1 = Document(id=doc1_id, filename="biology.txt", stored_filename=f"{doc1_id}.txt", file_type="txt", file_size=500, status="READY")
+    doc1 = Document(id=doc1_id, filename="biology.txt", stored_filename=f"{doc1_id}.txt", file_type="txt", file_size=500, status="READY", user_id="test-user")
     c1 = DocumentChunk(
         document_id=doc1_id, chunk_index=0, content="Mitochondria are the powerhouse of the cell.",
         page_number=None, embedding=EmbeddingService.embed_text("Mitochondria are the powerhouse of the cell.")
@@ -129,7 +132,7 @@ def test_rag_agent_document_specific_filter(db_session):
 
     # Doc 2: History
     doc2_id = str(uuid.uuid4())
-    doc2 = Document(id=doc2_id, filename="history.txt", stored_filename=f"{doc2_id}.txt", file_type="txt", file_size=500, status="READY")
+    doc2 = Document(id=doc2_id, filename="history.txt", stored_filename=f"{doc2_id}.txt", file_type="txt", file_size=500, status="READY", user_id="test-user")
     c2 = DocumentChunk(
         document_id=doc2_id, chunk_index=0, content="The Industrial Revolution began in Great Britain.",
         page_number=None, embedding=EmbeddingService.embed_text("The Industrial Revolution began in Great Britain.")
@@ -144,7 +147,7 @@ def test_rag_agent_document_specific_filter(db_session):
         usage_metadata={"input_tokens": 30, "output_tokens": 10, "total_tokens": 40}
     )
 
-    graph = create_rag_graph(db=db_session, llm=mock_llm)
+    graph = create_rag_graph(db=db_session, llm=mock_llm, user_id="test-user")
 
     # Filter to only doc1
     state = {

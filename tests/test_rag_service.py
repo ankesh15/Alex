@@ -1,3 +1,4 @@
+from app.models.user import User
 import uuid
 import pytest
 from unittest.mock import MagicMock
@@ -26,6 +27,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture
 def db_session():
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(User.__table__.insert().values(id="test-user", email="pipeline@example.test", password_hash="unused-test-hash"))
     session = TestingSessionLocal()
     try:
         yield session
@@ -86,7 +89,7 @@ def test_retrieve_context_with_threshold_filtering(db_session):
         file_type="pdf",
         file_size=2048,
         status="READY"
-    )
+    , user_id="test-user")
     db_session.add(doc)
 
     relevant_text = "General relativity describes gravitation as a geometric property of spacetime."
@@ -115,7 +118,7 @@ def test_retrieve_context_with_threshold_filtering(db_session):
         question="gravitation and spacetime curvature",
         top_k=5,
         threshold=0.65
-    )
+    , user_id="test-user")
 
     assert len(results) >= 1
     # Relevant physics chunk should be retrieved

@@ -1,24 +1,31 @@
 import React from 'react';
-import { Plus, Sparkles, FileText, FlaskConical } from 'lucide-react';
+import { Plus, Menu } from 'lucide-react';
 
 export default function Header({
   activeTab,
   onTabChange,
   documentCount = 0,
   onNewChat,
+  userEmail,
+  onLogout,
+  isLoggingOut,
+  onToggleHistory,
+  historyOpen,
+  isCreating,
 }) {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-slate-200">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
         {/* Brand */}
         <div className="flex items-center space-x-2.5">
+          <button type="button" onClick={onToggleHistory} aria-label="Toggle chat history" aria-expanded={historyOpen} aria-controls="conversation-history" className="p-1.5 rounded-lg hover:bg-slate-100"><Menu className="w-4 h-4" /></button>
           <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white font-semibold text-sm shadow-sm">
             A
           </div>
           <div className="flex flex-col">
             <div className="flex items-center space-x-2">
               <span className="font-bold text-sm tracking-tight text-slate-900">ALEX</span>
-              <span className="text-[10px] font-medium bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+              <span className="hidden sm:inline text-[10px] font-medium bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
                 AI Assistant
               </span>
             </div>
@@ -71,7 +78,7 @@ export default function Header({
           <button
             type="button"
             disabled
-            className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 cursor-not-allowed flex items-center space-x-1 opacity-60"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 cursor-not-allowed hidden sm:flex items-center space-x-1 opacity-60"
             title="Web Research & Reports coming in next phase"
           >
             <span>Research</span>
@@ -80,12 +87,15 @@ export default function Header({
             </span>
           </button>
 
+          <span className="hidden md:inline text-xs text-slate-500 max-w-36 truncate" title={userEmail}>{userEmail}</span>
+          <button type="button" onClick={onLogout} disabled={isLoggingOut} className="text-xs text-slate-600 hover:text-slate-900 px-2 py-1.5 rounded-lg disabled:opacity-50">{isLoggingOut ? 'Signing out…' : 'Sign out'}</button>
           {/* New Chat Button */}
           <button
             type="button"
             onClick={onNewChat}
+            disabled={isCreating}
             className="inline-flex items-center space-x-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-xs transition-colors ml-1"
-            title="Start a new chat (cleans up temporary session files)"
+            title="Start a new conversation"
           >
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">New Chat</span>

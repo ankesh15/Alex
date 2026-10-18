@@ -1,3 +1,5 @@
+from app.models.conversation import Conversation
+from app.models.user import User
 import os
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
@@ -28,6 +30,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture(autouse=True)
 def setup_test_db():
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(User.__table__.insert().values(id="test-user", email="pipeline@example.test", password_hash="unused-test-hash"))
 
     def override_get_db():
         db = TestingSessionLocal()
@@ -97,7 +101,7 @@ def test_rag_isolated_by_chat_id():
             file_type="txt",
             file_size=512,
             status="READY"
-        )
+        , user_id="test-user")
         chunk1 = DocumentChunk(
             document_id="doc-chat-1",
             chunk_index=0,
@@ -114,7 +118,7 @@ def test_rag_isolated_by_chat_id():
             file_type="txt",
             file_size=512,
             status="READY"
-        )
+        , user_id="test-user")
         chunk2 = DocumentChunk(
             document_id="doc-chat-2",
             chunk_index=0,
@@ -122,7 +126,7 @@ def test_rag_isolated_by_chat_id():
             embedding=EmbeddingService.embed_text("Cellular mitosis is the process of cell division.")
         )
 
-        db.add_all([doc1, chunk1, doc2, chunk2])
+        db.add_all([Conversation(id="chat-1", user_id="test-user"), Conversation(id="chat-2", user_id="test-user"), doc1, chunk1, doc2, chunk2])
         db.commit()
     finally:
         db.close()
@@ -179,14 +183,14 @@ def test_delete_chat_documents():
             file_type="txt",
             file_size=128,
             status="READY"
-        )
+        , user_id="test-user")
         chunk = DocumentChunk(
             document_id="doc-cleanup-1",
             chunk_index=0,
             content="cleanup content",
             embedding=EmbeddingService.embed_text("cleanup content")
         )
-        db.add_all([doc, chunk])
+        db.add_all([Conversation(id="chat-cleanup", user_id="test-user"), doc, chunk])
         db.commit()
     finally:
         db.close()

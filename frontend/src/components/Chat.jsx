@@ -7,11 +7,21 @@ export default function Chat({
   isLoading,
   onSelectSuggestion,
   hasReadyDocuments = false,
+  historyLoading = false,
+  historyError = null,
+  onRetryHistory,
+  hasOlder = false,
+  olderLoading = false,
+  onLoadOlder,
 }) {
   const messagesEndRef = useRef(null);
 
   // Auto-scroll to bottom of conversation
+  const previousTail = useRef(null);
   useEffect(() => {
+    const tail = messages.at(-1)?.id;
+    if (tail === previousTail.current && !isLoading) return;
+    previousTail.current = tail;
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
@@ -50,8 +60,11 @@ export default function Chat({
 
   return (
     <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 max-w-3xl w-full mx-auto">
+      {historyLoading && <p role="status" className="text-sm text-slate-500 py-8 text-center">Loading conversation…</p>}
+      {historyError && <div role="alert" className="text-sm text-red-700 bg-red-50 rounded-lg p-3 mb-4">{historyError}<button type="button" onClick={onRetryHistory} className="block underline mt-2">Retry messages</button></div>}
+      {hasOlder && <button type="button" onClick={onLoadOlder} disabled={olderLoading} className="block mx-auto mb-4 text-xs text-sky-700 underline disabled:opacity-50">{olderLoading ? 'Loading older messages…' : 'Load older messages'}</button>}
       {/* Empty State Welcome Screen */}
-      {messages.length === 0 ? (
+      {historyLoading || (historyError && !messages.length) ? null : messages.length === 0 ? (
         <div className="h-full flex flex-col items-center justify-center text-center py-10 sm:py-16">
           <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-md mb-4">
             <Sparkles className="w-6 h-6 text-sky-400" />

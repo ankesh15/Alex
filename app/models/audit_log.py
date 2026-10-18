@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, String, Text, Integer, DateTime
+from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey
 from app.core.db import Base
 
 
@@ -7,6 +7,8 @@ class AgentAuditLog(Base):
     __tablename__ = "agent_audit_logs"
 
     task_id = Column(String(64), primary_key=True, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    chat_id = Column(String(64), ForeignKey("conversations.id"), nullable=True, index=True)
     module_name = Column(String(50), index=True)
     status = Column(String(20), default="PENDING")
     input_data = Column(Text, nullable=True)
