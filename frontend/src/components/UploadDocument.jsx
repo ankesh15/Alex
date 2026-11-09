@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { Upload, FileText, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Upload, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { uploadDocument } from '../services/api';
 
 export default function UploadDocument({ onUploadSuccess, chatId }) {
@@ -8,9 +8,12 @@ export default function UploadDocument({ onUploadSuccess, chatId }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
+  const successTimer = useRef(null);
+  useEffect(() => () => clearTimeout(successTimer.current), []);
 
   const handleFile = async (file) => {
-    if (!file) return;
+    if (!file || isUploading) return;
+    clearTimeout(successTimer.current);
 
     // Check extension
     const ext = file.name.split('.').pop()?.toLowerCase();
@@ -32,13 +35,17 @@ export default function UploadDocument({ onUploadSuccess, chatId }) {
     setErrorMessage('');
 
     try {
-      await uploadDocument(file, chatId);
+      const document = await uploadDocument(file, chatId);
+      if (document.status === 'FAILED') {
+        if (onUploadSuccess) onUploadSuccess();
+        throw new Error('This document could not be processed. Check the file and try again.');
+      }
       setUploadStatus('success');
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (onUploadSuccess) onUploadSuccess();
 
       // Clear success notification after 4 seconds
-      setTimeout(() => {
+      successTimer.current = setTimeout(() => {
         setUploadStatus(null);
       }, 4000);
     } catch (err) {
@@ -69,7 +76,7 @@ export default function UploadDocument({ onUploadSuccess, chatId }) {
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm">
       <div className="mb-3">
         <h3 className="text-sm font-semibold text-slate-900">Upload Document</h3>
         <p className="text-xs text-slate-500">Supports PDF, DOCX, and TXT files up to 20 MB.</p>
@@ -80,7 +87,7 @@ export default function UploadDocument({ onUploadSuccess, chatId }) {
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
-        onClick={() => !isUploading && fileInputRef.current?.click()}
+
         className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
           dragActive
             ? 'border-sky-500 bg-sky-50/50'
@@ -89,6 +96,22 @@ export default function UploadDocument({ onUploadSuccess, chatId }) {
             : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
         }`}
       >
+        <button type="button" disabled={isUploading} onClick={() => fileInputRef.current?.click()}
+          className="w-full rounded-lg py-2 min-h-28" aria-label="Choose a document to upload" aria-busy={isUploading}>
+        {isUploading ? (
+          <span role="status" className="flex flex-col items-center gap-2 text-sky-700">
+            <Loader2 className="w-7 h-7 animate-spin" aria-hidden="true" />
+            <span className="text-sm font-medium">Uploading and processing…</span>
+            <span className="text-xs text-slate-500">Your document will appear below when it is ready.</span>
+          </span>
+        ) : (
+          <span className="flex flex-col items-center gap-2">
+            <span className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center"><Upload className="w-5 h-5 text-slate-600" aria-hidden="true" /></span>
+            <span className="text-sm font-medium text-slate-700"><span className="text-sky-700 underline underline-offset-2">Choose a file</span> or drag it here</span>
+            <span className="text-xs text-slate-500">PDF, DOCX, TXT · Up to 20 MB</span>
+          </span>
+        )}
+        </button>
         <input
           ref={fileInputRef}
           type="file"
@@ -98,34 +121,17 @@ export default function UploadDocument({ onUploadSuccess, chatId }) {
           onChange={(e) => handleFile(e.target.files?.[0])}
         />
 
-        {isUploading ? (
-          <div className="flex flex-col items-center justify-center space-y-2 text-sky-700 py-1">
-            <Loader2 className="w-7 h-7 animate-spin text-sky-600" />
-            <div className="text-sm font-medium">Processing document...</div>
-            <div className="text-xs text-slate-400">Extracting text, chunking, and embedding with FastEmbed</div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center space-y-2 py-1">
-            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-              <Upload className="w-5 h-5 text-slate-600" />
-            </div>
-            <div className="text-sm font-medium text-slate-700">
-              <span className="text-sky-600 hover:underline">Click to upload</span> or drag and drop
-            </div>
-            <div className="text-xs text-slate-400">PDF, DOCX, or TXT (Max 20MB)</div>
-          </div>
-        )}
       </div>
 
       {uploadStatus === 'success' && (
-        <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs flex items-center space-x-2">
+        <div role="status" className="mt-3 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs flex items-center space-x-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>Document uploaded and indexed successfully! It is now searchable.</span>
         </div>
       )}
 
       {uploadStatus === 'error' && (
-        <div className="mt-3 p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-xs flex items-center space-x-2">
+        <div role="alert" className="mt-3 p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-xs flex items-center space-x-2">
           <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
           <span>{errorMessage}</span>
         </div>

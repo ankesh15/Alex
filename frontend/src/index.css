@@ -9,3 +9,65 @@ body {
   background-color: #f8fafc;
   color: #0f172a;
 }
+
+@layer base {
+  :root { color-scheme: light; --alex-header-height: calc(64px + env(safe-area-inset-top, 0px)); }
+  html { -webkit-text-size-adjust: 100%; }
+  body { -webkit-font-smoothing: antialiased; }
+  button, input, textarea { -webkit-tap-highlight-color: transparent; }
+  button:not(:disabled) { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :where(button, a, input, textarea, [tabindex]):focus-visible {
+    outline: 2px solid #0284c7;
+    outline-offset: 3px;
+  }
+  ::selection { background: #e0f2fe; color: #0c4a6e; }
+  dialog { color: #0f172a; background: #fff; }
+}
+
+@layer components {
+  .app-shell { height: 100vh; height: var(--alex-workspace-height, 100dvh); }
+  .app-header { min-height: var(--alex-header-height); padding-top: env(safe-area-inset-top, 0px); }
+  .header-inner { @apply px-3 sm:px-5 flex items-center justify-between gap-2; height: 63px; }
+  .header-actions { @apply min-w-0; }
+  .icon-button { @apply inline-flex items-center justify-center w-10 h-10 shrink-0 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50 transition-colors; }
+  .secondary-button { @apply inline-flex items-center justify-center min-h-10 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 font-medium hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50 transition-colors; }
+  .history-panel, .history-backdrop { top: var(--alex-header-height); }
+  .history-panel { width: min(288px, calc(100vw - 40px)); }
+  .message-content { @apply text-[15px] leading-7 text-slate-700 break-words; overflow-wrap: anywhere; }
+  .message-content > * + * { margin-top: 1rem; }
+  .message-content p { @apply whitespace-pre-wrap; }
+  .message-content h2 { @apply text-lg leading-7 font-semibold text-slate-900 mt-6; }
+  .message-content h3 { @apply text-base font-semibold text-slate-900 mt-5; }
+  .message-content ul { @apply list-disc pl-5 space-y-1; }
+  .message-content ol { @apply list-decimal pl-5 space-y-1; }
+  .message-content strong { @apply font-semibold text-slate-900; }
+  .message-content a { @apply text-sky-700 underline underline-offset-2 hover:text-sky-900; }
+  .message-content :not(pre) > code { @apply bg-slate-100 border border-slate-200 rounded px-1 py-0.5 text-[13px] text-slate-800; }
+  .message-content blockquote { @apply pl-4 border-l-2 border-sky-300 text-slate-600; }
+  .code-block { @apply min-w-0 overflow-hidden border border-slate-200 rounded-xl bg-slate-50; }
+  .code-block pre { @apply overflow-x-auto p-4 text-[13px] leading-6 text-slate-800; white-space: pre; overflow-wrap: normal; }
+  .message-content table { @apply w-full text-left text-sm border-collapse; }
+  .message-content th { @apply font-semibold bg-slate-50; }
+  .message-content th, .message-content td { @apply px-3 py-2 border border-slate-200; }
+}
+
+@media (min-width: 1024px) {
+  .history-panel { width: 272px; }
+}
+@media (max-width: 639px) {
+  input, textarea { font-size: 16px !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+@layer components {
+  .sidebar-rail { width: 72px; }
+  .sidebar-nav-item { @apply flex items-center min-h-11 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-400 disabled:hover:bg-transparent transition-colors; }
+  .sidebar-nav-item-active { @apply bg-sky-50 text-sky-800 hover:bg-sky-100 hover:text-sky-900 ring-1 ring-inset ring-sky-200; }
+  .composer-dock { @apply shrink-0 bg-slate-50 border-t border-slate-200/70; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .chat-scroll-region { overflow-anchor: none; scrollbar-gutter: stable; }
+  .message-action { @apply inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50; }
+  .inline-status { @apply shrink-0 flex items-center gap-2 border rounded-lg mx-4 mt-2 px-3 py-2 text-xs leading-5; }
+}

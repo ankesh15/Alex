@@ -338,14 +338,15 @@ and optional PostgreSQL integration checks are not yet included in that workflow
 ### Backend
 
 The [Dockerfile](Dockerfile) builds the FastAPI service, and [railway.json](railway.json)
-configures Railway startup and liveness checks. Provision PostgreSQL with pgvector
-and a persistent document-storage volume.
+configures Railway database migrations, startup, and liveness checks. Provision
+PostgreSQL with pgvector and a persistent document-storage volume.
 
 Before rolling out an upgraded backend:
 
 1. Back up the database and document storage using your operational procedures.
 2. Configure the intended database credentials and persistent `STORAGE_DIR`.
-3. Run `python -m app.core.migrate` in the release environment before starting the new API.
+3. Railway runs `python -m app.core.migrate` as a pre-deploy command before starting
+   the new API. For other hosts, run the command in the release environment yourself.
 4. Set `APP_ENV=production`, `SESSION_COOKIE_SECURE=true`, trusted frontend origins,
    and HTTPS. The container listens on the supplied `PORT` (default `8000`).
 

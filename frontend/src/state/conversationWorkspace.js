@@ -109,7 +109,10 @@ export function createConversationWorkspace({ api, userId, storage = null }) {
         const conversation = await api.createConversation();
         if (alive) controller.refreshList();
         if (!current(token)) return null;
-        return await controller.open(conversation.id) ? conversation : null;
+        const openToken = epoch + 1;
+        const opened = await controller.open(conversation.id);
+        if (opened && current(openToken)) patch({ notice: 'Conversation created.' });
+        return opened ? conversation : null;
       } catch (error) { if (current(token)) patch({ historyError: error.message }); return null; }
       finally { if (current(token)) patch({ creating: false, historyLoading: false }); }
     },
@@ -131,7 +134,8 @@ export function createConversationWorkspace({ api, userId, storage = null }) {
         const conversation = await api.renameConversation(id, title);
         if (!alive) return;
         patch({ conversations: state.conversations.map(c => c.id === id ? conversation : c),
-          active: state.active?.id === id ? { ...state.active, ...conversation } : state.active });
+          active: state.active?.id === id ? { ...state.active, ...conversation } : state.active,
+          notice: 'Conversation renamed.' });
         await controller.refreshList();
       } finally { patch({ mutationId: null }); }
     },
@@ -150,6 +154,7 @@ export function createConversationWorkspace({ api, userId, storage = null }) {
         await controller.refreshList();
       } finally { patch({ mutationId: null }); }
     },
+    dismissNotice() { patch({ notice: null }); },
     setScope(scope) { patch({ scope }); },
     removeAttachment(id) { patch({ attachedFiles: state.attachedFiles.filter(d => d.id !== id), scope: state.scope === id ? 'all' : state.scope }); },
     documentDeleted(id, token = epoch) {
@@ -173,7 +178,13 @@ export function createConversationWorkspace({ api, userId, storage = null }) {
       patch({ isUploading: true, documentsError: null });
       try {
         const document = await api.uploadDocument(file, id);
-        if (current(token)) patch({ documents: unique([...state.documents, document]), attachedFiles: [...state.attachedFiles, document], scope: document.id });
+        if (current(token)) {
+          const documents = unique([...state.documents, document]);
+          if (document.status === 'READY') patch({ documents, attachedFiles: [...state.attachedFiles, document], scope: document.id,
+            notice: `${document.filename || 'Document'} is ready to use.` });
+          else patch({ documents, documentsError: document.status === 'FAILED' ? 'The document could not be processed. Check the file and try again.' : null,
+            notice: document.status === 'FAILED' ? null : 'Document uploaded. Processing is not complete.' });
+        }
         if (alive) controller.refreshList();
       } catch (error) { if (current(token)) patch({ documentsError: error.message }); }
       finally {

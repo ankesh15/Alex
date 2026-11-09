@@ -190,3 +190,62 @@ test('late uploads cannot change documents or scope of another selected conversa
   assert.equal(controller.getState().scope, 'general');
   assert.equal(controller.getState().isUploading, false);
 });
+
+test('creation and rename success notices wait for server confirmation', async () => {
+  const pending = deferred();
+  const { controller } = harness({ createConversation: () => pending.promise });
+  const creating = controller.create();
+  assert.equal(controller.getState().creating, true);
+  assert.equal(controller.getState().notice, null);
+  pending.resolve({ id: 'a', title: 'Chat a' });
+  await creating;
+  assert.equal(controller.getState().notice, 'Conversation created.');
+  controller.dismissNotice();
+  assert.equal(controller.getState().notice, null);
+  await controller.rename('a', 'Renamed');
+  assert.equal(controller.getState().notice, 'Conversation renamed.');
+});
+
+test('failed conversation creation never emits success feedback', async () => {
+  const { controller } = harness({ async createConversation() { throw new Error('Storage unavailable'); } });
+  await controller.create();
+  assert.equal(controller.getState().notice, null);
+  assert.equal(controller.getState().historyError, 'Storage unavailable');
+});
+
+test('failed or still-processing uploads do not become searchable attachments', async () => {
+  for (const status of ['FAILED', 'PROCESSING']) {
+    const { controller } = harness({ async uploadDocument() { return { id: 'upload', filename: 'notes.txt', status }; } });
+    await controller.open('a');
+    await controller.upload({ name: 'notes.txt' });
+    const state = controller.getState();
+    assert.equal(state.documents[0].status, status);
+    assert.deepEqual(state.attachedFiles, []);
+    assert.equal(state.scope, 'general');
+    assert.equal(state.isUploading, false);
+    assert.ok(!state.notice?.includes('ready to use'));
+    if (status === 'FAILED') assert.match(state.documentsError, /could not be processed/);
+  }
+});
+
+test('ready upload feedback follows backend readiness and retains attachment scope', async () => {
+  const { controller } = harness();
+  await controller.open('a');
+  await controller.upload({ name: 'notes.txt' });
+  assert.equal(controller.getState().scope, 'uploaded');
+  assert.equal(controller.getState().attachedFiles[0].id, 'uploaded');
+  assert.equal(controller.getState().notice, 'notes.txt is ready to use.');
+});
+
+test('duplicate submission while an answer is pending makes only one API call', async () => {
+  const result = deferred();
+  let requests = 0;
+  const { controller } = harness({ askAlexGeneral() { requests += 1; return result.promise; } });
+  await controller.open('a');
+  const first = controller.send('Question');
+  await controller.send('Question');
+  assert.equal(requests, 1);
+  result.resolve({ answer: 'Saved answer' });
+  await first;
+  assert.equal(controller.getState().messages.filter(m => m.content === 'Saved answer').length, 1);
+});

@@ -1,7 +1,7 @@
 import React from 'react';
 import UploadDocument from './UploadDocument';
 import DocumentList from './DocumentList';
-import { ArrowLeft, FileText, Info } from 'lucide-react';
+import { ArrowLeft, Info } from 'lucide-react';
 
 export default function DocumentsView({
   documents,
@@ -33,7 +33,7 @@ export default function DocumentsView({
         </button>
       </div>
 
-      {/* Temporary Notice Pill */}
+      {/* Conversation retention notice */}
       <div className="p-3 bg-sky-50/70 border border-sky-200/60 rounded-xl text-xs text-sky-800 flex items-center space-x-2.5">
         <Info className="w-4 h-4 text-sky-600 shrink-0" />
         <span>

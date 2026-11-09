@@ -1,4 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import InlineStatus from './components/InlineStatus';
+import { isNewConversationShortcut } from './utils/workspaceLayout';
 import { AuthProvider, useAuth } from './auth/AuthProvider';
 import AuthScreen from './auth/AuthScreen';
 import Header from './components/Header';
@@ -20,6 +22,7 @@ function ProtectedApp() {
 function Workspace() {
   const { user, logout } = useAuth();
   const [logoutError, setLogoutError] = useState(null);
+  const [attachmentError, setAttachmentError] = useState(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const handleLogout = async () => {
     setIsLoggingOut(true); setLogoutError(null);
@@ -27,46 +30,87 @@ function Workspace() {
     finally { setIsLoggingOut(false); }
   };
   const [activeTab, setActiveTab] = useState('chat');
-  const [historyOpen, setHistoryOpen] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
+  const [desktop, setDesktop] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
+  const [historyOpen, setHistoryOpen] = useState(desktop);
+  const shellRef = useRef(null);
+  const sidebarToggleRef = useRef(null);
   const closeHistory = useCallback(() => setHistoryOpen(false), []);
   const [state, controller] = useConversationWorkspace(user.id);
   const readyDocuments = state.documents.filter(document => document.status === 'READY');
   const currentId = state.active?.id;
   const selection = state.selectionVersion;
-  const newChat = async () => { setActiveTab('chat'); await controller.create(); };
+  const newChat = useCallback(async () => { setActiveTab('chat'); await controller.create(); }, [controller]);
+  const navigate = tab => { setActiveTab(tab); if (!desktop) setHistoryOpen(false); };
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)');
+    const resize = event => { setDesktop(event.matches); setHistoryOpen(event.matches); };
+    media.addEventListener('change', resize);
+    return () => media.removeEventListener('change', resize);
+  }, []);
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, []);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const resize = () => {
+      if (viewport.scale === 1) shellRef.current?.style.setProperty('--alex-workspace-height', `${viewport.height}px`);
+    };
+    resize();
+    viewport.addEventListener('resize', resize);
+    return () => viewport.removeEventListener('resize', resize);
+  }, []);
+  useEffect(() => {
+    const shortcut = event => {
+      if (!document.querySelector('dialog[open]') && isNewConversationShortcut(event)) {
+        event.preventDefault();
+        if (!desktop) setHistoryOpen(false);
+        newChat();
+      }
+    };
+    document.addEventListener('keydown', shortcut);
+    return () => document.removeEventListener('keydown', shortcut);
+  }, [newChat, desktop]);
   const selectChat = id => { setActiveTab('chat'); controller.open(id); };
   const attachFile = file => {
     if (!file) return;
+    setAttachmentError(null);
     const extension = file.name.split('.').pop()?.toLowerCase();
-    if (!['pdf', 'docx', 'txt'].includes(extension)) { alert('Please attach a PDF, DOCX, or TXT file.'); return; }
-    if (file.size > 20 * 1024 * 1024) { alert('File exceeds the 20 MB size limit.'); return; }
+    if (!['pdf', 'docx', 'txt'].includes(extension)) { setAttachmentError('Please attach a PDF, DOCX, or TXT file.'); return; }
+    if (file.size > 20 * 1024 * 1024) { setAttachmentError('File exceeds the 20 MB size limit.'); return; }
     controller.upload(file);
   };
   return (
-    <div className="h-screen flex flex-col bg-slate-50 text-slate-900 font-sans overflow-hidden">
-      <Header activeTab={activeTab} onTabChange={setActiveTab} documentCount={readyDocuments.length}
+    <div ref={shellRef} className="app-shell flex flex-col bg-slate-50 text-slate-900 overflow-hidden">
+      <Header toggleRef={sidebarToggleRef} drawerOpen={!desktop && historyOpen}
         onNewChat={newChat} userEmail={user.email} onLogout={handleLogout} isLoggingOut={isLoggingOut}
         onToggleHistory={() => setHistoryOpen(value => !value)} historyOpen={historyOpen} isCreating={state.creating} />
-      {logoutError && <p role="alert" className="text-sm text-red-700 p-3 text-center">{logoutError}</p>}
+      {logoutError && <InlineStatus error onDismiss={() => setLogoutError(null)}>{logoutError}</InlineStatus>}
       <div className="flex-1 flex min-h-0 relative">
-        <ConversationSidebar open={historyOpen} onClose={closeHistory} state={state} controller={controller} onSelect={selectChat} onNew={newChat} />
-        <main className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
-          <div className="px-4 sm:px-6 py-2 border-b border-slate-100 bg-white/50">
-            <h1 className="max-w-3xl mx-auto text-xs font-medium text-slate-600 truncate">{state.active?.title || 'Start a conversation'}</h1>
+        <ConversationSidebar toggleRef={sidebarToggleRef} desktop={desktop} activeTab={activeTab} onNavigate={navigate} documentCount={readyDocuments.length}
+          onExpand={() => setHistoryOpen(true)} open={historyOpen} onClose={closeHistory} state={state} controller={controller} onSelect={selectChat} onNew={newChat} />
+        <main inert={!desktop && historyOpen ? '' : undefined} id="workspace" className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
+          <div className="px-4 sm:px-6 py-3 border-b border-slate-200/70 bg-white">
+            <h1 className="max-w-3xl mx-auto text-sm font-medium text-slate-700 truncate">{state.active?.title || 'Start a conversation'}</h1>
           </div>
-          {state.notice && <div role="status" className="text-xs text-slate-600 px-4 py-2">{state.notice}{state.cleanupRetryId && <button type="button" disabled={!!state.mutationId} onClick={() => controller.delete(state.cleanupRetryId).catch(() => {})} className="ml-2 text-sky-700 underline">Retry file cleanup</button>}</div>}
-          {state.documentsError && activeTab === 'chat' && <p role="alert" className="text-xs text-red-700 px-4 py-2">{state.documentsError}</p>}
+          {state.notice && <InlineStatus onDismiss={state.cleanupRetryId ? undefined : () => controller.dismissNotice()}>{state.notice}{state.cleanupRetryId && <button type="button" disabled={!!state.mutationId} onClick={() => controller.delete(state.cleanupRetryId).catch(() => {})} className="ml-2 text-sky-700 underline">Retry file cleanup</button>}</InlineStatus>}
+          {state.documentsError && activeTab === 'chat' && <InlineStatus error>{state.documentsError}</InlineStatus>}
+          {attachmentError && <InlineStatus error onDismiss={() => setAttachmentError(null)}>{attachmentError}</InlineStatus>}
           {activeTab === 'chat' ? (
             <>
-              <Chat messages={state.messages} isLoading={state.isSending} hasReadyDocuments={readyDocuments.length > 0}
+              <Chat key={`${currentId || 'empty'}:${selection}`} messages={state.messages} isLoading={state.isSending} hasReadyDocuments={readyDocuments.length > 0}
                 onSelectSuggestion={(text, scope) => controller.send(text, scope)} historyLoading={state.historyLoading}
                 historyError={state.historyError} onRetryHistory={() => currentId ? controller.open(currentId) : controller.create()}
-                hasOlder={state.beforeTurn !== null} olderLoading={state.olderLoading} onLoadOlder={() => controller.loadOlder()} />
-              <ChatInput key={`${currentId || 'empty'}:${selection}`} onSendMessage={(text, scope) => controller.send(text, scope)}
+                hasOlder={state.beforeTurn !== null} olderLoading={state.olderLoading} onLoadOlder={() => controller.loadOlder()} onRecover={() => currentId && controller.open(currentId)} />
+              <div className="composer-dock">
+                <ChatInput key={`${currentId || 'empty'}:${selection}`} onSendMessage={(text, scope) => controller.send(text, scope)}
                 isLoading={state.isSending || state.historyLoading || state.creating || (!!state.historyError && !state.messages.length)}
                 documents={state.documents} selectedScope={state.scope} onScopeChange={scope => controller.setScope(scope)}
                 onAttachFile={attachFile} attachedFiles={state.attachedFiles} onRemoveAttachment={id => controller.removeAttachment(id)}
                 isUploadingAttachment={state.isUploading} />
+              </div>
             </>
           ) : currentId && !state.historyLoading ? (
             <DocumentsView key={`${currentId}:${selection}`} documents={state.documents} chatId={currentId}
